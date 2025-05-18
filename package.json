@@ -1,0 +1,35 @@
+{
+  "name": "latex-ast-parser",
+  "version": "0.1.0",
+  "description": "解析LaTeX项目并输出抽象语法树(AST)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "latex-ast-parser": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "latex",
+    "ast",
+    "parser"
+  ],
+  "dependencies": {
+    "@unified-latex/unified-latex-from-string": "^1.6.0",
+    "@unified-latex/unified-latex-types": "^1.6.0",
+    "@unified-latex/unified-latex-util-arguments": "^1.6.0",
+    "@unified-latex/unified-latex-util-parse": "^1.6.0",
+    "@unified-latex/unified-latex-util-visit": "^1.6.0",
+    "@unified-latex/unified-latex-to-string": "^1.6.0",
+    "unified": "^10.1.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "@types/yargs": "^17.0.25",
+    "typescript": "^5.2.2"
+  }
+} 

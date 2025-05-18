@@ -1,0 +1,31 @@
+\section{第二章}
+
+这是第二章的内容，通过 \verb|\include| 命令引入。
+
+\subsection{表格}
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{|c|c|c|}
+        \hline
+        A & B & C \\
+        \hline
+        1 & 2 & 3 \\
+        4 & 5 & 6 \\
+        \hline
+    \end{tabular}
+    \caption{示例表格}
+    \label{tab:example}
+\end{table}
+
+参考表 \ref{tab:example}。
+
+\subsection{定理环境}
+
+\begin{theorem}
+    每个正整数都可以表示为若干个不同的斐波那契数之和。
+\end{theorem}
+
+\begin{proof}
+    略。
+\end{proof} 

@@ -1,0 +1,16 @@
+{
+  "theorem": { "signature": "o m" },
+  "proof": { "signature": "o m" },
+  "figurename": { "signature": "" },
+  "tablename": { "signature": "" },
+  "contentsname": { "signature": "" },
+  "listfigurename": { "signature": "" },
+  "listtablename": { "signature": "" },
+  "refname": { "signature": "" },
+  "indexname": { "signature": "" },
+  "figurename": { "signature": "" },
+  "tablename": { "signature": "" },
+  "partname": { "signature": "" },
+  "appendixname": { "signature": "" },
+  "abstractname": { "signature": "" }
+} 

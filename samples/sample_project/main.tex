@@ -1,0 +1,45 @@
+\documentclass{article}
+
+\input{preamble}
+
+% 自定义宏定义
+\newcommand{\mycmd}[2]{#1 is #2}
+\newcommand{\myoptcmd}[2][default]{The #1 and #2}
+
+\begin{document}
+
+\title{LaTeX AST 解析器测试文档}
+\author{Test Author}
+\date{\today}
+
+\maketitle
+
+\section{简介}
+
+这是一个测试 LaTeX AST 解析器的示例文档。
+它包含了一些常见的 LaTeX 结构和命令，用于测试解析功能。
+
+\section{数学公式}
+
+行内公式: $E = mc^2$.
+
+行间公式:
+\begin{equation}
+    F = ma
+\end{equation}
+
+\section{列表}
+
+\begin{itemize}
+    \item 第一项
+    \item 第二项
+    \item 第三项
+\end{itemize}
+
+\section{引用其他文件}
+
+\input{chapter1}
+
+\include{chapter2}
+
+\end{document} 
