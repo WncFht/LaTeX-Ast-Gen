@@ -5,7 +5,9 @@
 
 import * as utils from './utils';
 import type * as Ast from '@unified-latex/unified-latex-types';
-import { ParserOptions } from './types';
+import { ParserOptions, MacroInfo, Node } from './types';
+import { listNewcommands } from "@unified-latex/unified-latex-util-macros";
+import { visit } from "@unified-latex/unified-latex-util-visit";
 
 /**
  * 宏处理器类
@@ -72,6 +74,90 @@ export class MacroHandler {
   }
 
   /**
+   * 扫描AST中使用的未定义自定义宏
+   * @param ast 要扫描的AST
+   * @returns 从AST中提取的自定义宏列表
+   */
+  public extractUsedCustomMacros(ast: Ast.Root): Ast.MacroInfoRecord {
+    const customMacros: Ast.MacroInfoRecord = {};
+    const knownMacroNames = new Set(Object.keys(this.macroRecord));
+    const potentialCustomMacros = new Map<string, {node: any, argCount: number}>();
+    
+    // 使用unified-latex的visit函数递归访问AST
+    visit(ast, (node: any, info: any) => {
+      // 只处理宏节点
+      if (node.type !== 'macro') return;
+      
+      const macroName = node.content;
+      
+      // 如果这是一个已知宏，跳过
+      if (knownMacroNames.has(macroName)) return;
+      
+      // 计算潜在的参数数量 - 检查后面是否跟着group节点
+      let argCount = 0;
+      
+      // 获取父节点和当前节点在父节点内容中的索引
+      if (info.parents.length > 0) {
+        const parent = info.parents[info.parents.length - 1];
+        if (parent && Array.isArray(parent.content)) {
+          const index = parent.content.indexOf(node);
+          if (index !== -1) {
+            // 检查后续节点是否为group类型，可能是未识别的参数
+            let currentIndex = index + 1;
+            while (currentIndex < parent.content.length) {
+              const nextNode = parent.content[currentIndex];
+              if (nextNode && nextNode.type === 'group') {
+                argCount++;
+                currentIndex++;
+              } else {
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // 记录这个潜在的自定义宏
+      if (!potentialCustomMacros.has(macroName) ||
+          potentialCustomMacros.get(macroName)!.argCount < argCount) {
+        potentialCustomMacros.set(macroName, {node, argCount});
+      }
+    });
+    
+    // 为所有潜在的自定义宏创建签名
+    for (const [macroName, info] of potentialCustomMacros.entries()) {
+      let signature = '';
+      for (let i = 0; i < info.argCount; i++) {
+        signature += (signature ? ' ' : '') + 'm';
+      }
+      customMacros[macroName] = { signature };
+    }
+    
+    return customMacros;
+  }
+
+  /**
+   * 解析并处理文档中手动定义的宏
+   * 使用unified-latex的listNewcommands函数提取宏定义
+   * 
+   * @param ast LaTeX AST
+   * @returns 提取的宏定义
+   */
+  public extractDefinedMacros(ast: Ast.Root): Ast.MacroInfoRecord {
+    const newMacros: Ast.MacroInfoRecord = {};
+    
+    // 使用unified-latex的listNewcommands获取宏定义
+    const commandSpecs = listNewcommands(ast);
+    
+    // 转换格式为MacroInfoRecord
+    for (const spec of commandSpecs) {
+      newMacros[spec.name] = { signature: spec.signature };
+    }
+    
+    return newMacros;
+  }
+
+  /**
    * 加载预定义的常用LaTeX宏
    * @returns 预定义宏的记录
    * @private
@@ -123,6 +209,14 @@ export class MacroHandler {
       // 图形和表格
       'includegraphics': { signature: 'o o m' },
       'caption': { signature: 'o m' },
+      
+      // 常用于数学推导的命令
+      'deriv': { signature: 'm m' },    // 导数 \deriv{f}{x}
+      'pdv': { signature: 'm m' },      // 偏导 \pdv{f}{x}
+      'dv': { signature: 'm m' },       // 微分 \dv{f}{x}
+      'norm': { signature: 'm' },       // 范数 \norm{x}
+      'abs': { signature: 'm' },        // 绝对值 \abs{x}
+      'Set': { signature: 'm' },        // 集合 \Set{x | x > 0}
       
       // 更多命令可以根据需要添加...
     };

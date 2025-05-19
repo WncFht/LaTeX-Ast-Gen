@@ -7,6 +7,21 @@ import type { latexParser, bibtexParser } from 'latex-utensils';
 import type * as Ast from '@unified-latex/unified-latex-types';
 
 /**
+ * 节点类型
+ * 用于自定义访问器模式的类型定义
+ */
+export type Node = any;
+
+/**
+ * MacroInfo类型
+ * 用于定义宏参数规范的接口
+ */
+export interface MacroInfo {
+  /** 宏参数的签名，如 "o m m" */
+  signature: string;
+}
+
+/**
  * 项目文件AST
  * 表示单个LaTeX文件的AST及相关元数据
  */
@@ -60,6 +75,14 @@ export interface CliSpecificOptions {
   pretty?: boolean;
   /** 显示帮助信息的标志 */
   help?: boolean;
+  /** 自定义宏定义文件路径 */
+  customMacros?: string;
+  /** 禁用默认宏 */
+  noDefaultMacros?: boolean;
+  /** 是否保存独立AST文件 */
+  saveIndividualAst?: boolean;
+  /** 独立AST文件存储目录 */
+  individualAstDir?: string;
 }
 
 /**

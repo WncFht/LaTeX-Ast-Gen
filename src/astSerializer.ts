@@ -5,6 +5,8 @@
 
 import type * as Ast from '@unified-latex/unified-latex-types';
 import { ProjectAST } from './types';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * 序列化输出数据的接口
@@ -14,6 +16,11 @@ interface SerializedOutput {
     rootFilePath?: string;
     projectGlobalErrors?: string[];
     macros?: Ast.MacroInfoRecord;
+    customMacros?: string[]; // 自定义宏列表
+    processInfo?: {
+      timestamp: string;
+      version: string;
+    };
   };
   [filePath: string]: {
     ast: Ast.Root;
@@ -41,7 +48,12 @@ export function serializeProjectAstToJson(
     (projectAST.errors && projectAST.errors.length > 0) ||
     projectAST.macros
   ) {
-    outputData._metadata = {};
+    outputData._metadata = {
+      processInfo: {
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+      }
+    };
     
     // 添加根文件路径
     if (projectAST.rootFilePath !== null) {
@@ -56,6 +68,24 @@ export function serializeProjectAstToJson(
     // 添加宏定义记录
     if (projectAST.macros) {
       outputData._metadata.macros = projectAST.macros;
+      
+      // 提取自定义宏（非标准LaTeX宏）
+      const standardMacros = new Set([
+        'documentclass', 'usepackage', 'input', 'include', 'subfile',
+        'textbf', 'textit', 'texttt', 'underline', 'emph',
+        'mathbb', 'mathbf', 'mathcal', 'mathrm', 'frac', 'sqrt',
+        'newcommand', 'renewcommand', 'DeclareMathOperator',
+        'begin', 'end', 'item', 'label', 'ref', 'cite',
+        'bibliography', 'bibliographystyle', 'includegraphics', 'caption'
+      ]);
+      
+      const customMacros = Object.keys(projectAST.macros)
+        .filter(macro => !standardMacros.has(macro))
+        .sort();
+      
+      if (customMacros.length > 0) {
+        outputData._metadata.customMacros = customMacros;
+      }
     }
   }
   
@@ -76,4 +106,38 @@ export function serializeProjectAstToJson(
   return prettyPrint 
     ? JSON.stringify(outputData, null, 2) 
     : JSON.stringify(outputData);
+}
+
+/**
+ * 将AST保存为单独的JSON文件
+ * 
+ * @param ast AST对象
+ * @param outputPath 输出文件路径
+ * @param prettyPrint 是否格式化输出的JSON字符串
+ * @returns 保存是否成功
+ */
+export function saveAstAsJson(
+  ast: any,
+  outputPath: string,
+  prettyPrint: boolean = false
+): boolean {
+  try {
+    // 确保目录存在
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // 序列化为JSON
+    const jsonContent = prettyPrint 
+      ? JSON.stringify(ast, null, 2) 
+      : JSON.stringify(ast);
+    
+    // 写入文件
+    fs.writeFileSync(outputPath, jsonContent, 'utf8');
+    return true;
+  } catch (error) {
+    console.error(`保存AST到文件 ${outputPath} 失败:`, error);
+    return false;
+  }
 } 
