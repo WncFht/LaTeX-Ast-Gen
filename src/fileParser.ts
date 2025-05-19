@@ -4,8 +4,8 @@
  */
 
 import * as path from 'path';
-// @ts-expect-error 导入自定义的unified.js文件
-import { getParser, attachMacroArgs } from '../resources/unified.js';
+import { getParser } from '@unified-latex/unified-latex-util-parse';
+import { attachMacroArgs } from '@unified-latex/unified-latex-util-arguments';
 import * as utils from './utils';
 import type * as Ast from '@unified-latex/unified-latex-types';
 import { InternalFileParseResult } from './types';

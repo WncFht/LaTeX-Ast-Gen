@@ -156,9 +156,8 @@ export class ProjectParser {
    * 确定根文件
    * @param entryPath 入口路径（文件或目录）
    * @returns 根文件路径，如果找不到则为null
-   * @private
    */
-  private async determineRootFile(entryPath: string): Promise<string | null> {
+  public async determineRootFile(entryPath: string): Promise<string | null> {
     try {
       // 检查入口路径是否存在
       const entryExists = await utils.fileExistsAsync(entryPath);
@@ -229,6 +228,16 @@ export class ProjectParser {
       return null;
     }
   }
+}
+
+/**
+ * 独立函数：确定LaTeX项目根文件
+ * @param entryPath 入口路径（文件或目录）
+ * @returns 根文件路径，如果找不到则为null
+ */
+export async function findRootFile(entryPath: string): Promise<string | null> {
+  const parser = new ProjectParser();
+  return parser.determineRootFile(entryPath);
 }
 
 /**

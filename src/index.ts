@@ -4,7 +4,7 @@
  */
 
 // 核心解析功能
-export { parseLatexProject } from './projectParser';
+export { parseLatexProject, findRootFile } from './projectParser';
 
 // 核心类 (供高级使用)
 export { ProjectParser } from './projectParser';
@@ -23,4 +23,4 @@ export type * as AstTypes from '@unified-latex/unified-latex-types';
 
 // 辅助工具
 export { serializeProjectAstToJson, saveAstAsJson } from './astSerializer';
-export { normalizePath, isTexFile } from './utils'; 
+export { normalizePath, isTexFile, findTexFiles, isRootFileContent } from './utils'; 
