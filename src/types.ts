@@ -45,6 +45,13 @@ export interface ProjectAST {
   files: ProjectFileAst[];
   /** 用于解析项目的最终聚合宏定义 */
   macros: Ast.MacroInfoRecord;
+  /** 可选：按来源分类的详细宏信息，用于调试或更细致的分析 */
+  _detailedMacros?: {
+    defaultAndUser: Ast.MacroInfoRecord;
+    definedInDocument: Ast.MacroInfoRecord;
+    inferredUsed: Ast.MacroInfoRecord;
+    finalEffectiveMacros: Ast.MacroInfoRecord;
+  };
   /** 项目解析期间遇到的全局错误消息 */
   errors?: string[];
 }

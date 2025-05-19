@@ -15,11 +15,20 @@ interface SerializedOutput {
   _metadata?: {
     rootFilePath?: string;
     projectGlobalErrors?: string[];
-    macros?: Ast.MacroInfoRecord;
-    customMacros?: string[]; // 自定义宏列表
+    // 用于向后兼容或快速查看最终生效的宏
+    effectiveMacros?: Ast.MacroInfoRecord; 
+    // 新增：分类后的宏信息
+    macrosByCategory?: {
+        defaultAndUser: Ast.MacroInfoRecord;
+        definedInDocument: Ast.MacroInfoRecord;
+        inferredUsed: Ast.MacroInfoRecord;
+        finalEffectiveMacros: Ast.MacroInfoRecord; // 重复 effectiveMacros，但作为分类的一部分
+    };
+    // customMacros 列表可以基于 finalEffectiveMacros 生成，或移除，因为分类信息更全
+    // customMacros?: string[]; 
     processInfo?: {
       timestamp: string;
-      version: string;
+      version: string; // 应该从 package.json 获取
     };
   };
   [filePath: string]: {
@@ -31,7 +40,7 @@ interface SerializedOutput {
 /**
  * 将项目AST序列化为JSON字符串
  * 
- * @param projectAST 项目AST对象
+ * @param projectAST 项目AST对象，期望包含 _detailedMacros
  * @param prettyPrint 是否格式化输出的JSON字符串
  * @returns 表示项目AST的JSON字符串
  */
@@ -39,70 +48,57 @@ export function serializeProjectAstToJson(
   projectAST: ProjectAST,
   prettyPrint: boolean = false
 ): string {
-  // 创建输出对象
   const outputData: SerializedOutput = {};
   
-  // 添加元数据
-  if (
-    projectAST.rootFilePath !== null || 
-    (projectAST.errors && projectAST.errors.length > 0) ||
-    projectAST.macros
-  ) {
+  if (!outputData._metadata) {
     outputData._metadata = {
-      processInfo: {
-        timestamp: new Date().toISOString(),
-        version: '1.0.0'
-      }
+        processInfo: {
+            timestamp: new Date().toISOString(),
+            // TODO: 从 package.json 动态获取版本
+            version: '1.0.1' // 示例版本
+        }
     };
-    
-    // 添加根文件路径
-    if (projectAST.rootFilePath !== null) {
-      outputData._metadata.rootFilePath = projectAST.rootFilePath;
-    }
-    
-    // 添加项目级错误
-    if (projectAST.errors && projectAST.errors.length > 0) {
-      outputData._metadata.projectGlobalErrors = projectAST.errors;
-    }
-    
-    // 添加宏定义记录
-    if (projectAST.macros) {
-      outputData._metadata.macros = projectAST.macros;
-      
-      // 提取自定义宏（非标准LaTeX宏）
-      const standardMacros = new Set([
-        'documentclass', 'usepackage', 'input', 'include', 'subfile',
-        'textbf', 'textit', 'texttt', 'underline', 'emph',
-        'mathbb', 'mathbf', 'mathcal', 'mathrm', 'frac', 'sqrt',
-        'newcommand', 'renewcommand', 'DeclareMathOperator',
-        'begin', 'end', 'item', 'label', 'ref', 'cite',
-        'bibliography', 'bibliographystyle', 'includegraphics', 'caption'
-      ]);
-      
-      const customMacros = Object.keys(projectAST.macros)
-        .filter(macro => !standardMacros.has(macro))
-        .sort();
-      
-      if (customMacros.length > 0) {
-        outputData._metadata.customMacros = customMacros;
-      }
-    }
   }
   
-  // 处理文件AST
+  if (projectAST.rootFilePath !== null) {
+    outputData._metadata.rootFilePath = projectAST.rootFilePath;
+  }
+  
+  if (projectAST.errors && projectAST.errors.length > 0) {
+    outputData._metadata.projectGlobalErrors = projectAST.errors;
+  }
+  
+  // 使用详细的分类宏信息
+  if (projectAST._detailedMacros) {
+    outputData._metadata.macrosByCategory = projectAST._detailedMacros;
+    // 为了方便，也可以保留一个扁平的最终生效宏列表
+    outputData._metadata.effectiveMacros = projectAST._detailedMacros.finalEffectiveMacros;
+  } else if (projectAST.macros) {
+    // 向后兼容，如果 _detailedMacros 不存在，则使用 projectAST.macros
+    outputData._metadata.effectiveMacros = projectAST.macros;
+  }
+  
+  // (可选) 重新生成 customMacros 列表，如果需要的话
+  // const finalMacros = projectAST._detailedMacros ? projectAST._detailedMacros.finalEffectiveMacros : projectAST.macros;
+  // if (finalMacros) {
+  //   const standardMacros = new Set([ /* ... 你的标准宏列表 ... */ ]);
+  //   const customMacrosList = Object.keys(finalMacros)
+  //     .filter(macro => !standardMacros.has(macro))
+  //     .sort();
+  //   if (customMacrosList.length > 0) {
+  //     outputData._metadata.customMacros = customMacrosList;
+  //   }
+  // }
+
   for (const fileAstEntry of projectAST.files) {
-    // 将文件路径映射到其AST
     outputData[fileAstEntry.filePath] = {
       ast: fileAstEntry.ast
     };
-    
-    // 如果有错误，添加到文件对象
     if (fileAstEntry.error) {
       outputData[fileAstEntry.filePath].parsingError = fileAstEntry.error;
     }
   }
   
-  // 序列化为JSON
   return prettyPrint 
     ? JSON.stringify(outputData, null, 2) 
     : JSON.stringify(outputData);
@@ -122,18 +118,15 @@ export function saveAstAsJson(
   prettyPrint: boolean = false
 ): boolean {
   try {
-    // 确保目录存在
     const dir = path.dirname(outputPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     
-    // 序列化为JSON
     const jsonContent = prettyPrint 
       ? JSON.stringify(ast, null, 2) 
       : JSON.stringify(ast);
     
-    // 写入文件
     fs.writeFileSync(outputPath, jsonContent, 'utf8');
     return true;
   } catch (error) {

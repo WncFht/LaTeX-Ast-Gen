@@ -19,94 +19,102 @@ export type { Ast };
  */
 async function mainCli(): Promise<void> {
   try {
-    // 解析命令行参数
     const options = parseCliArgs(process.argv.slice(2));
     
-    // 如果请求帮助，显示帮助信息并退出
     if (options.help) {
       yargs.showHelp();
       process.exit(0);
     }
     
-    // 验证入口路径是否提供
     if (!options.entryPath) {
       console.error('错误: 必须提供入口文件或项目目录路径');
       yargs.showHelp();
       process.exit(1);
     }
     
-    // 加载自定义宏定义（如果提供）
     let customMacroRecord: Ast.MacroInfoRecord | undefined;
-    if (options.customMacros) {
+    if (options.customMacros) { // 注意：parseCliArgs中这个选项可能是 customMacros 或 macros
       try {
         const macrosContent = await utils.readFileAsync(options.customMacros);
         customMacroRecord = JSON.parse(macrosContent) as Ast.MacroInfoRecord;
         if (customMacroRecord && typeof customMacroRecord === 'object') {
-          console.log(`已加载自定义宏定义: ${Object.keys(customMacroRecord).length} 个宏`);
+          console.log(`已加载自定义宏定义 (来自 ${options.customMacros}): ${Object.keys(customMacroRecord).length} 个宏`);
         }
       } catch (error) {
         console.warn(`警告: 无法加载自定义宏文件 ${options.customMacros}: ${(error as Error).message}`);
       }
     }
     
-    // 准备库调用选项
     const parserOptions: ParserOptions = { 
       entryPath: options.entryPath, 
-      macrosFile: options.macrosFile, 
+      // macrosFile 选项似乎在你的 yargs 定义中没有直接对应，需要确认
+      // 如果 'custom-macros' 和 'macros' 是同一个意思，确保 yargs 解析正确
+      macrosFile: options.macrosFile || options.customMacros, // 假设 customMacros 也可以是 macrosFile
       loadDefaultMacros: !options.noDefaultMacros,
       customMacroRecord
     };
     
     console.log('正在解析LaTeX项目...');
-    
-    // 调用核心库进行项目解析
     const projectAst: ProjectAST = await parseLatexProject(parserOptions);
     
-    // 导出独立的AST文件
     if (options.saveIndividualAst) {
       const outputDir = options.individualAstDir || path.dirname(options.output || 'ast_files');
       console.log(`正在导出独立的AST文件到目录: ${outputDir}`);
-      
       let fileCount = 0;
       for (const fileAst of projectAst.files) {
         const baseName = path.basename(fileAst.filePath, '.tex');
         const astFilePath = path.join(outputDir, `${baseName}.ast.json`);
-        
         if (saveAstAsJson(fileAst.ast, astFilePath, options.pretty)) {
           fileCount++;
         }
       }
-      
       console.log(`成功导出 ${fileCount} 个独立AST文件`);
     }
     
-    // 序列化项目AST
     const jsonOutput = serializeProjectAstToJson(projectAst, options.pretty);
     
-    // 输出结果
     if (options.output) {
       await utils.writeFileAsync(options.output, jsonOutput);
       console.log(`项目AST已写入文件: ${options.output}`);
     } else {
-      console.log(jsonOutput);
+      // 如果不输出到文件，则可能不需要打印整个JSON到控制台，除非用户明确要求
+      // console.log(jsonOutput); 
     }
     
-    // 打印自定义宏信息
-    if (projectAst.macros) {
-      const standardMacros = new Set([
-        'documentclass', 'usepackage', 'input', 'include', 'subfile',
-        'textbf', 'textit', 'texttt', 'underline', 'emph',
-        'mathbb', 'mathbf', 'mathcal', 'mathrm', 'frac', 'sqrt',
-        'newcommand', 'renewcommand', 'DeclareMathOperator',
-        'begin', 'end', 'item', 'label', 'ref', 'cite',
-        'bibliography', 'bibliographystyle', 'includegraphics', 'caption'
-      ]);
+    // 打印分类的宏信息
+    if (projectAst._detailedMacros) {
+      const { defaultAndUser, definedInDocument, inferredUsed, finalEffectiveMacros } = projectAst._detailedMacros;
       
-      const customMacros = Object.keys(projectAst.macros)
-        .filter(macro => !standardMacros.has(macro));
+      console.log(`\n--- 宏定义摘要 ---`);
+
+      const printMacroCategory = (categoryName: string, macros: Ast.MacroInfoRecord) => {
+        const macroNames = Object.keys(macros);
+        if (macroNames.length > 0) {
+          console.log(`\n[${categoryName}] (${macroNames.length} 个):`);
+          // 只打印前几个示例，避免刷屏
+          macroNames.slice(0, 20).forEach(name => {
+            console.log(`- \\${name}${macros[name].signature ? ` [${macros[name].signature}]` : ''}`);
+          });
+          if (macroNames.length > 20) {
+            console.log(`  ...以及其他 ${macroNames.length - 20} 个宏`);
+          }
+        } else {
+          console.log(`\n[${categoryName}]: 无`);
+        }
+      };
+
+      printMacroCategory("默认及用户提供/外部文件宏 (Default/User/External)", defaultAndUser);
+      printMacroCategory("文档中定义的宏 (Defined in Document via \\newcommand etc.)", definedInDocument);
+      printMacroCategory("使用但未知，启发式推断的宏 (Inferred Used)", inferredUsed);
       
+      console.log(`\n[最终生效的宏列表] (共 ${Object.keys(finalEffectiveMacros).length} 个)`);
+      // 可以选择在这里也打印一些 finalEffectiveMacros 的例子或总数
+
+    } else if (projectAst.macros) { // 向后兼容的打印
+      console.warn("\n注意: 使用了旧版的宏信息结构进行打印。");
+      const customMacros = Object.keys(projectAst.macros); // 假设所有都是 custom
       if (customMacros.length > 0) {
-        console.log(`\n检测到的自定义宏 (${customMacros.length}):`);
+        console.log(`\n检测到的宏 (${customMacros.length}):`);
         for (const macro of customMacros) {
           const signature = projectAst.macros[macro].signature;
           console.log(`- \\${macro}${signature ? ` [${signature}]` : ''}`);
@@ -114,7 +122,6 @@ async function mainCli(): Promise<void> {
       }
     }
     
-    // 打印错误摘要
     if (projectAst.errors && projectAst.errors.length > 0) {
       console.error('\n解析过程中遇到的错误:');
       projectAst.errors.forEach(error => {
@@ -129,9 +136,6 @@ async function mainCli(): Promise<void> {
 
 /**
  * 解析命令行参数
- * 
- * @param args 命令行参数数组
- * @returns 解析后的选项对象
  */
 function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
   const parser = yargs(args)
@@ -142,14 +146,9 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
       type: 'string',
       default: 'ast.json'
     })
-    .option('m', {
-      alias: 'macros',
-      describe: '包含自定义宏定义的JSON文件路径',
-      type: 'string',
-    })
     .option('c', {
       alias: 'custom-macros',
-      describe: '包含自定义宏定义的JSON文件路径（更高优先级）',
+      describe: '包含自定义宏定义的JSON文件路径',
       type: 'string',
     })
     .option('pretty', {
@@ -159,7 +158,8 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
     })
     .option('no-default-macros', {
       describe: '不加载默认宏定义',
-      type: 'boolean'
+      type: 'boolean',
+      default: false
     })
     .option('save-individual-ast', {
       describe: '将每个文件的AST保存为单独的JSON文件',
@@ -168,24 +168,36 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
     })
     .option('individual-ast-dir', {
       describe: '存储单独AST文件的目录',
-      type: 'string'
+      type: 'string',
+      default: 'individual_asts'
     })
     .help('h')
     .alias('h', 'help')
-    .epilog('示例: latex-ast-parser ./main.tex -o ast.json --pretty');
+    .epilog('示例: latex-ast-parser ./main.tex -o ast.json --custom-macros ./my_macros.json');
 
   const argv = parser.parseSync();
   
-  // 提取入口路径（第一个非选项参数）
   const entryPath = argv._[0] as string | undefined;
   
+  // 基本的 ParserOptions，确保类型正确
+  const parserOptions: ParserOptions = {
+    entryPath: entryPath || '',
+    macrosFile: argv.customMacros as string | undefined,
+    loadDefaultMacros: !argv.noDefaultMacros, // 从 argv.noDefaultMacros 计算
+    customMacroRecord: undefined, // 这个由 mainCli 内部逻辑填充
+  };
+
+  // CliSpecificOptions 和其他 yargs 解析出的参数
+  // argv 中已经包含了如 output, pretty, help, customMacros (路径), noDefaultMacros 等
+  // 直接将 argv 展开，然后覆盖/添加特定计算或处理的字段
   return {
-    ...argv,
-    entryPath: entryPath || ''
+    ...argv, // 首先展开 argv，它包含了 yargs 解析的所有选项
+    ...parserOptions, // 然后用明确构造的 parserOptions覆盖或补充，特别是类型转换和逻辑计算后的字段
+    // output, pretty, help 等字段会由 ...argv 提供，类型由 yargs 保证
+    // customMacros (作为文件路径) 也由 ...argv 提供
   } as ParserOptions & CliSpecificOptions;
 }
 
-// 执行CLI主函数
 if (require.main === module) {
   mainCli().catch(error => {
     console.error(`未处理的错误: ${error.message}`);
