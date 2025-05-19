@@ -18,13 +18,8 @@
     "parser"
   ],
   "dependencies": {
-    "@unified-latex/unified-latex-from-string": "^1.6.0",
-    "@unified-latex/unified-latex-types": "^1.6.0",
-    "@unified-latex/unified-latex-util-arguments": "^1.6.0",
-    "@unified-latex/unified-latex-util-parse": "^1.6.0",
-    "@unified-latex/unified-latex-util-visit": "^1.6.0",
-    "@unified-latex/unified-latex-to-string": "^1.6.0",
-    "unified": "^10.1.2",
+    "@unified-latex/unified-latex-types": "1.8.0",
+    "latex-utensils": "^1.1.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

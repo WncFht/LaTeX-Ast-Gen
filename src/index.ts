@@ -17,6 +17,9 @@ export type {
   ParserOptions,
 } from './types';
 
+// @unified-latex类型重新导出
+export type * as AstTypes from '@unified-latex/unified-latex-types';
+
 // 辅助工具
 export { serializeProjectAstToJson } from './astSerializer';
 export { normalizePath, isTexFile } from './utils'; 

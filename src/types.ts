@@ -4,6 +4,7 @@
  */
 
 import type { latexParser, bibtexParser } from 'latex-utensils';
+import type * as Ast from '@unified-latex/unified-latex-types';
 
 /**
  * 项目文件AST
@@ -13,7 +14,7 @@ export interface ProjectFileAst {
   /** 指向LaTeX源文件的绝对或规范化路径 */
   filePath: string;
   /** 文件的AST，由unified-latex生成 */
-  ast: any; // 使用any类型暂时替代，之后可以用具体类型
+  ast: Ast.Root;
   /** 可选的错误信息，如果解析此特定文件失败 */
   error?: string;
 }
@@ -28,7 +29,7 @@ export interface ProjectAST {
   /** 项目中每个已解析文件的AST和元数据 */
   files: ProjectFileAst[];
   /** 用于解析项目的最终聚合宏定义 */
-  macros: Record<string, { signature: string }>;
+  macros: Ast.MacroInfoRecord;
   /** 项目解析期间遇到的全局错误消息 */
   errors?: string[];
 }
@@ -45,7 +46,7 @@ export interface ParserOptions {
   /** 是否加载一组预定义的常用LaTeX宏 */
   loadDefaultMacros?: boolean;
   /** 直接传入的MacroInfoRecord对象，优先于macrosFile */
-  customMacroRecord?: Record<string, { signature: string }>;
+  customMacroRecord?: Ast.MacroInfoRecord;
 }
 
 /**
@@ -67,9 +68,9 @@ export interface CliSpecificOptions {
  */
 export interface InternalFileParseResult {
   /** 文件的已解析AST，如果发生致命解析错误则为null */
-  ast: any | null; // 使用any类型暂时替代
+  ast: Ast.Root | null;
   /** 此文件中定义的宏 */
-  newMacros: Record<string, { signature: string }>;
+  newMacros: Ast.MacroInfoRecord;
   /** 从此文件包含/输入的文件列表 */
   includedFiles: {
     /** 规范化的文件路径 */

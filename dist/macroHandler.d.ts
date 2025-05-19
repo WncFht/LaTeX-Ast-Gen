@@ -2,6 +2,7 @@
  * 宏处理器模块
  * 负责在整个项目解析生命周期中管理LaTeX宏定义
  */
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { ParserOptions } from './types';
 /**
  * 宏处理器类
@@ -21,16 +22,12 @@ export declare class MacroHandler {
      * 添加新的宏定义到现有记录
      * @param newMacros 新的宏定义记录
      */
-    addMacros(newMacros: Record<string, {
-        signature: string;
-    }>): void;
+    addMacros(newMacros: Ast.MacroInfoRecord): void;
     /**
      * 获取当前所有宏定义的副本
      * @returns 宏定义记录的深拷贝
      */
-    getCurrentMacros(): Record<string, {
-        signature: string;
-    }>;
+    getCurrentMacros(): Ast.MacroInfoRecord;
     /**
      * 加载预定义的常用LaTeX宏
      * @returns 预定义宏的记录

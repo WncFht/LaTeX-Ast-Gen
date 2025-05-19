@@ -140,7 +140,6 @@ class FileParser {
     }
     /**
      * 访问AST中的所有宏节点
-     * 简化的visit实现
      *
      * @param node AST节点
      * @param callback 回调函数
@@ -152,7 +151,7 @@ class FileParser {
             callback(node);
         }
         // 递归处理子节点
-        if (node.content && Array.isArray(node.content)) {
+        if ('content' in node && Array.isArray(node.content)) {
             for (const child of node.content) {
                 if (typeof child === 'object' && child !== null) {
                     this.visitMacros(child, callback);
@@ -160,11 +159,11 @@ class FileParser {
             }
         }
         // 处理参数
-        if (node.args && Array.isArray(node.args)) {
+        if ('args' in node && Array.isArray(node.args)) {
             for (const arg of node.args) {
                 if (typeof arg === 'object' && arg !== null) {
                     // 处理参数内容
-                    if (arg.content) {
+                    if ('content' in arg) {
                         if (Array.isArray(arg.content)) {
                             for (const content of arg.content) {
                                 if (typeof content === 'object' && content !== null) {
@@ -297,7 +296,7 @@ class FileParser {
                         .map((n) => {
                         if (typeof n === 'string')
                             return n;
-                        if (n.type === 'string')
+                        if (n.type === 'string' && 'content' in n)
                             return n.content;
                         return '';
                     })

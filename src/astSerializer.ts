@@ -3,7 +3,23 @@
  * 负责将解析得到的项目级AST数据结构转换为JSON字符串
  */
 
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { ProjectAST } from './types';
+
+/**
+ * 序列化输出数据的接口
+ */
+interface SerializedOutput {
+  _metadata?: {
+    rootFilePath?: string;
+    projectGlobalErrors?: string[];
+    macros?: Ast.MacroInfoRecord;
+  };
+  [filePath: string]: {
+    ast: Ast.Root;
+    parsingError?: string;
+  } | any;
+}
 
 /**
  * 将项目AST序列化为JSON字符串
@@ -17,7 +33,7 @@ export function serializeProjectAstToJson(
   prettyPrint: boolean = false
 ): string {
   // 创建输出对象
-  const outputData: Record<string, any> = {};
+  const outputData: SerializedOutput = {};
   
   // 添加元数据
   if (

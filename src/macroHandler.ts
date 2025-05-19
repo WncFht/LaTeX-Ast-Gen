@@ -4,6 +4,7 @@
  */
 
 import * as utils from './utils';
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { ParserOptions } from './types';
 
 /**
@@ -14,7 +15,7 @@ export class MacroHandler {
   /**
    * 存储所有已知宏定义的记录
    */
-  private macroRecord: Record<string, { signature: string }>;
+  private macroRecord: Ast.MacroInfoRecord;
 
   /**
    * 创建一个新的MacroHandler实例
@@ -56,7 +57,7 @@ export class MacroHandler {
    * 添加新的宏定义到现有记录
    * @param newMacros 新的宏定义记录
    */
-  public addMacros(newMacros: Record<string, { signature: string }>): void {
+  public addMacros(newMacros: Ast.MacroInfoRecord): void {
     for (const [macroName, macroInfo] of Object.entries(newMacros)) {
       this.macroRecord[macroName] = macroInfo;
     }
@@ -66,7 +67,7 @@ export class MacroHandler {
    * 获取当前所有宏定义的副本
    * @returns 宏定义记录的深拷贝
    */
-  public getCurrentMacros(): Record<string, { signature: string }> {
+  public getCurrentMacros(): Ast.MacroInfoRecord {
     return JSON.parse(JSON.stringify(this.macroRecord));
   }
 
@@ -75,7 +76,7 @@ export class MacroHandler {
    * @returns 预定义宏的记录
    * @private
    */
-  private loadDefaultMacros(): Record<string, { signature: string }> {
+  private loadDefaultMacros(): Ast.MacroInfoRecord {
     // 预定义常用LaTeX宏参数规范
     // 这些宏定义改编自LaTeX-Workshop的src/parse/parser/unified-defs.ts
     return {
@@ -133,10 +134,10 @@ export class MacroHandler {
    * @returns 宏定义记录，如果加载失败则为null
    * @private
    */
-  private async loadExternalMacrosFromFile(filePath: string): Promise<Record<string, { signature: string }> | null> {
+  private async loadExternalMacrosFromFile(filePath: string): Promise<Ast.MacroInfoRecord | null> {
     try {
       const content = await utils.readFileAsync(filePath);
-      return JSON.parse(content) as Record<string, { signature: string }>;
+      return JSON.parse(content) as Ast.MacroInfoRecord;
     } catch (error) {
       throw new Error(`加载宏定义文件 ${filePath} 失败: ${(error as Error).message}`);
     }

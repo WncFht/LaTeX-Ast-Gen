@@ -2,6 +2,7 @@
  * 文件解析器模块
  * 解析单个LaTeX源文件，提取AST、宏定义和文件引用
  */
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { InternalFileParseResult } from './types';
 /**
  * 文件解析器类
@@ -15,9 +16,7 @@ export declare class FileParser {
      * @param currentMacroRecord 当前已知的宏定义集合
      * @returns 包含AST、新宏定义和包含的文件的解析结果
      */
-    parseFile(filePath: string, currentMacroRecord: Record<string, {
-        signature: string;
-    }>): Promise<InternalFileParseResult>;
+    parseFile(filePath: string, currentMacroRecord: Ast.MacroInfoRecord): Promise<InternalFileParseResult>;
     /**
      * 解析LaTeX文本内容为AST
      *
@@ -37,7 +36,6 @@ export declare class FileParser {
     private extractNewMacros;
     /**
      * 访问AST中的所有宏节点
-     * 简化的visit实现
      *
      * @param node AST节点
      * @param callback 回调函数

@@ -7,7 +7,11 @@
 import yargs from 'yargs';
 import { parseLatexProject, serializeProjectAstToJson } from './index';
 import { ParserOptions, CliSpecificOptions, ProjectAST } from './types';
+import type * as Ast from '@unified-latex/unified-latex-types';
 import * as utils from './utils';
+
+// 导出统一LaTeX类型供CLI扩展或调用方使用
+export type { Ast };
 
 /**
  * CLI主执行函数
@@ -76,17 +80,18 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
     .option('o', {
       alias: 'output',
       describe: '输出JSON文件的路径',
-      type: 'string'
+      type: 'string',
+      default: 'ast.json'
     })
     .option('m', {
       alias: 'macros',
       describe: '包含自定义宏定义的JSON文件路径',
-      type: 'string'
+      type: 'string',
     })
     .option('pretty', {
       describe: '格式化JSON输出',
       type: 'boolean',
-      default: false
+      default: true
     })
     .option('no-default-macros', {
       describe: '不加载默认宏定义',

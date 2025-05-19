@@ -7,6 +7,7 @@ import * as path from 'path';
 // @ts-expect-error 导入自定义的unified.js文件
 import { getParser, attachMacroArgs } from '../resources/unified.js';
 import * as utils from './utils';
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { InternalFileParseResult } from './types';
 
 /**
@@ -23,7 +24,7 @@ export class FileParser {
    */
   public async parseFile(
     filePath: string,
-    currentMacroRecord: Record<string, { signature: string }>
+    currentMacroRecord: Ast.MacroInfoRecord
   ): Promise<InternalFileParseResult> {
     try {
       // 读取文件内容
@@ -73,8 +74,8 @@ export class FileParser {
    */
   private parseLatexContent(
     content: string,
-    macroRecord: Record<string, { signature: string }>
-  ): any | null {
+    macroRecord: Ast.MacroInfoRecord
+  ): Ast.Root | null {
     try {
       // 创建解析器实例，参考LaTeX-Workshop的实现
       const parser = getParser({ 
@@ -101,11 +102,11 @@ export class FileParser {
    * @returns 新宏定义的记录
    * @private
    */
-  private extractNewMacros(ast: any): Record<string, { signature: string }> {
-    const newMacros: Record<string, { signature: string }> = {};
+  private extractNewMacros(ast: Ast.Root): Ast.MacroInfoRecord {
+    const newMacros: Ast.MacroInfoRecord = {};
     
     // 访问AST中的所有宏节点
-    this.visitMacros(ast, (node) => {
+    this.visitMacros(ast, (node: Ast.Macro) => {
       // 检查是否是定义新宏的命令
       if (['newcommand', 'renewcommand'].includes(node.content)) {
         this.processMacroDefinition(node, newMacros);
@@ -120,20 +121,19 @@ export class FileParser {
 
   /**
    * 访问AST中的所有宏节点
-   * 简化的visit实现
    * 
    * @param node AST节点
    * @param callback 回调函数
    */
-  private visitMacros(node: any, callback: (node: any) => void): void {
+  private visitMacros(node: Ast.Ast, callback: (node: Ast.Macro) => void): void {
     if (!node) return;
     
     if (node.type === 'macro') {
-      callback(node);
+      callback(node as Ast.Macro);
     }
     
     // 递归处理子节点
-    if (node.content && Array.isArray(node.content)) {
+    if ('content' in node && Array.isArray(node.content)) {
       for (const child of node.content) {
         if (typeof child === 'object' && child !== null) {
           this.visitMacros(child, callback);
@@ -142,11 +142,11 @@ export class FileParser {
     }
     
     // 处理参数
-    if (node.args && Array.isArray(node.args)) {
+    if ('args' in node && Array.isArray(node.args)) {
       for (const arg of node.args) {
         if (typeof arg === 'object' && arg !== null) {
           // 处理参数内容
-          if (arg.content) {
+          if ('content' in arg) {
             if (Array.isArray(arg.content)) {
               for (const content of arg.content) {
                 if (typeof content === 'object' && content !== null) {
@@ -170,8 +170,8 @@ export class FileParser {
    * @private
    */
   private processMacroDefinition(
-    node: any,
-    macros: Record<string, { signature: string }>
+    node: Ast.Macro,
+    macros: Ast.MacroInfoRecord
   ): void {
     // 确保节点有args属性
     if (!node.args || node.args.length < 1) return;
@@ -185,7 +185,7 @@ export class FileParser {
     // 处理命令名参数
     if (Array.isArray(firstArg.content)) {
       // 如果内容是数组，查找macro节点
-      const macroNode = firstArg.content.find((n: any) => n.type === 'macro');
+      const macroNode = firstArg.content.find((n: Ast.Ast) => n.type === 'macro') as Ast.Macro | undefined;
       if (macroNode) {
         macroName = macroNode.content;
       }
@@ -232,8 +232,8 @@ export class FileParser {
    * @private
    */
   private processMathOperator(
-    node: any,
-    macros: Record<string, { signature: string }>
+    node: Ast.Macro,
+    macros: Ast.MacroInfoRecord
   ): void {
     // 确保节点有args属性
     if (!node.args || node.args.length < 1) return;
@@ -247,7 +247,7 @@ export class FileParser {
     // 处理命令名参数
     if (Array.isArray(firstArg.content)) {
       // 如果内容是数组，查找macro节点
-      const macroNode = firstArg.content.find((n: any) => n.type === 'macro');
+      const macroNode = firstArg.content.find((n: Ast.Ast) => n.type === 'macro') as Ast.Macro | undefined;
       if (macroNode) {
         macroName = macroNode.content;
       }
@@ -271,7 +271,7 @@ export class FileParser {
    * @private
    */
   private extractIncludedFiles(
-    ast: any,
+    ast: Ast.Root,
     baseDir: string
   ): { path: string; command: string; rawPath: string }[] {
     const includedFiles: { path: string; command: string; rawPath: string }[] = [];
@@ -280,7 +280,7 @@ export class FileParser {
     const includeCommands = ['input', 'include', 'subfile'];
     
     // 访问AST中的所有宏节点
-    this.visitMacros(ast, (node) => {
+    this.visitMacros(ast, (node: Ast.Macro) => {
       // 检查是否是包含文件的命令
       if (includeCommands.includes(node.content)) {
         // 确保节点有args属性
@@ -296,9 +296,9 @@ export class FileParser {
         if (Array.isArray(firstArg.content)) {
           // 如果内容是数组，将其转换为字符串
           rawPath = firstArg.content
-            .map((n: any) => {
+            .map((n: Ast.Ast | string) => {
               if (typeof n === 'string') return n;
-              if (n.type === 'string') return n.content;
+              if (n.type === 'string' && 'content' in n) return n.content;
               return '';
             })
             .join('');

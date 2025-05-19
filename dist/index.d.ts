@@ -6,5 +6,6 @@ export { parseLatexProject } from './projectParser';
 export { ProjectParser } from './projectParser';
 export { MacroHandler } from './macroHandler';
 export type { ProjectAST, ProjectFileAst, ParserOptions, } from './types';
+export type * as AstTypes from '@unified-latex/unified-latex-types';
 export { serializeProjectAstToJson } from './astSerializer';
 export { normalizePath, isTexFile } from './utils';

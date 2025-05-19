@@ -5,6 +5,7 @@
 
 import * as path from 'path';
 import * as utils from './utils';
+import type * as Ast from '@unified-latex/unified-latex-types';
 import { FileParser } from './fileParser';
 import { MacroHandler } from './macroHandler';
 import { ParserOptions, ProjectAST, ProjectFileAst } from './types';
@@ -17,7 +18,7 @@ export class ProjectParser {
   private fileParser: FileParser;
   private macroHandler: MacroHandler;
   private parsedFiles: Set<string>;
-  private projectAstMap: Map<string, any | null>;
+  private projectAstMap: Map<string, Ast.Root | null>;
   private projectFileErrors: Map<string, string>;
   private projectGlobalErrors: string[];
   private rootFilePath: string | null;
@@ -30,7 +31,7 @@ export class ProjectParser {
     this.fileParser = new FileParser();
     this.macroHandler = customMacroHandler || new MacroHandler();
     this.parsedFiles = new Set<string>();
-    this.projectAstMap = new Map<string, any | null>();
+    this.projectAstMap = new Map<string, Ast.Root | null>();
     this.projectFileErrors = new Map<string, string>();
     this.projectGlobalErrors = [];
     this.rootFilePath = null;
