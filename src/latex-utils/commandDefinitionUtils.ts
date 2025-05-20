@@ -343,6 +343,7 @@ export function listNewEnvironments(
         if (spec) {
             newEnvSpecs.push(spec);
         }
+
     };
 
     const testFn = (node: Ast.Ast, _info?: VisitInfo): boolean => 

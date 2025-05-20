@@ -21,12 +21,41 @@ export function resolvePath(basePath: string, relativePath: string): string {
 
 /**
  * 规范化路径。
- * 解析路径中的 `.` 和 `..` 片段，并确保路径分隔符统一为 POSIX 风格的 `/`。
+ * 将所有反斜杠替换为正斜杠，然后使用 `path.posix.normalize` 进行规范化，
+ * 以确保输出为 POSIX 风格的路径，并解析了 `.` 和 `..` 片段。
  * @param filePath - 要规范化的文件路径。
- * @returns 规范化后的路径，使用 POSIX 分隔符。
+ * @returns 规范化后的 POSIX 风格路径。
  */
 export function normalizePath(filePath: string): string {
-  return nodePath.normalize(filePath).replace(/\\/g, '/');
+  if (filePath === null || filePath === undefined) {
+    // path.normalize(undefined) or path.normalize(null) throws error
+    // For consistency with path.normalize('') -> '.'
+    // we can decide how to handle null/undefined. Here, let's return empty string or throw.
+    // Or, more simply, rely on TS to prevent null/undefined if arg is string.
+    // Assuming filePath is always string as per type def.
+  }
+  const posixPath = filePath.replace(/\\/g, '/');
+  let normalized = nodePath.posix.normalize(posixPath);
+
+  // path.posix.normalize('') is '.', and path.posix.normalize('/') is '/'
+  // If the original path was empty or just a slash, and normalize turned it into '.',
+  // but we want to preserve an empty string for an empty input, or preserve a single slash,
+  // we might need post-processing. However, for general path usage, '.' is fine for empty.
+  // If the input was something like "//foo" normalize might keep it or change to "/foo"
+  // If the input was "foo//bar", normalize will make it "foo/bar"
+  
+  // A common issue: Windows paths like C:/Users/name
+  // filePath.replace will make it C:/Users/name
+  // nodePath.posix.normalize("C:/Users/name") will return "C:/Users/name"
+  // This is generally fine as it's a valid POSIX-like representation of that segment.
+
+  // If normalized results in an empty string (e.g. from input like "./" then normalize(".")), but original was not empty
+  // it might be better to return '.' consistent with path.normalize('')
+  if (normalized === '' && filePath !== '') {
+      return '.';
+  }
+  // path.posix.normalize('') returns '.', so this handles empty input too.
+  return normalized;
 }
 
 /**

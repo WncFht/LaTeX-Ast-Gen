@@ -174,6 +174,30 @@ declare module '@unified-latex/unified-latex-types' {
   }
   
   /**
+   * 表示 \verb|...| 命令的节点。
+   */
+  export interface Verb extends Ast {
+    type: "verb";
+    content: string; // 原始文本内容
+    escape: string;  // 用作定界符的字符，例如 "|" 或 "+"
+  }
+
+  /**
+   * 表示 verbatim 环境 (例如 \begin{verbatim} ... \end{verbatim}) 或类似环境的节点。
+   * 通常，它会被解析为一个具有特定 `env` 值的 `Ast.Environment`，
+   * 但有时解析器可能将其特殊处理为具有字符串内容的类型。
+   * 为简单起见，我们假设它是一个有 `content: string` 的特殊环境类型，
+   * 或者是一个 `env` 为 "verbatim" 的标准 `Ast.Environment`，其 `content` 内只有一个字符串节点。
+   * 为了更准确，我们这里定义一个 VerbatimEnvironment，但实际应用时需根据解析器行为调整。
+   */
+  export interface VerbatimEnvironment extends Ast {
+    type: "verbatim"; // 或者可能是 "environment"，然后检查 env 字段
+    env: string; // 例如 "verbatim", "lstlisting"
+    content: string; // 原始文本内容，与标准 Environment 的 Ast.Ast[] content 不同
+    args?: Argument[]; // lstlisting 等环境可能有参数
+  }
+
+  /**
    * 表示数学模式中的上标或下标节点。
    */
   export interface Superscript extends Ast {

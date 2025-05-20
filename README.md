@@ -156,27 +156,43 @@ main();
 
 ```
 AST-Gen/
-├── dist/            # 编译后的 JavaScript 文件
-├── resources/       # 资源文件 (例如 unified.js 的本地副本，如果使用)
-├── samples/         # 示例 LaTeX 项目
-├── src/             # 源代码
-│   ├── astSerializer.ts      # AST 序列化器
-│   ├── fileParser.ts         # 单个文件解析器
-│   ├── index.ts              # 库入口
-│   ├── macroHandler.ts       # 宏和环境定义处理器
-│   ├── main.ts               # CLI 入口和参数解析
-│   ├── projectParser.ts      # LaTeX 项目整体解析器
-│   ├── types.ts              # 核心类型定义
-│   ├── utils.ts              # 通用工具函数
-│   ├── environment-parser/   # 环境定义解析相关模块
-│   │   ├── environment-commands.ts # 环境定义命令的识别与处理
-│   │   ├── list-newenvironments.ts # 从AST中列出新定义的环境
-│   │   └── types.ts                # 环境解析相关的特定类型
-│   ├── unified-latex-custom.d.ts # unified-latex 包的自定义类型声明
-│   └── unified.d.ts              # unified 本身及 @unified-latex/unified-latex-types 的类型声明
-├── package.json     # 项目配置
-├── tsconfig.json    # TypeScript 配置
-└── README.md        # 说明文档
+├── dist/                     # 编译后的 JavaScript 文件
+├── samples/                  # 示例 LaTeX 项目
+├── src/                      # 源代码
+│   ├── core/                 # 核心解析逻辑
+│   │   ├── ProjectProcessor.ts   # 项目级协调器 (替代原 ProjectParser)
+│   │   ├── FileContentParser.ts  # 单个文件内容解析器 (替代原 FileParser)
+│   │   ├── DefinitionHandler.ts  # 宏和环境定义管理器 (替代原 MacroHandler)
+│   │   └── DefinitionExtractor.ts# 从AST中提取定义的工具
+│   ├── ast/                  # AST处理相关
+│   │   └── AstSerializer.ts      # AST序列化器
+│   ├── cli/                  # 命令行接口相关
+│   │   └── main.ts               # CLI 入口和参数解析
+│   ├── config/               # 配置管理
+│   │   ├── options.ts            # 配置选项类型定义
+│   │   └── configManager.ts      # 配置加载和处理逻辑
+│   ├── latex-utils/          # LaTeX特定工具和与底层库的桥接
+│   │   ├── unifiedLatexBridge.ts # 封装 unified-latex 调用
+│   │   ├── astQuery.ts           # AST 遍历和匹配工具 (封装 visit, match)
+│   │   ├── commandDefinitionUtils.ts # 提取宏/环境定义的底层函数
+│   │   └── projectFileUtils.ts   # TeX项目文件相关的工具 (查找文件、判断类型等)
+│   ├── types/                # TypeScript 类型定义
+│   │   └── index.ts              # 项目核心类型定义入口
+│   ├── utils/                # 通用工具函数
+│   │   ├── fileSystem.ts         # 文件系统操作封装
+│   │   ├── pathUtils.ts          # 路径处理工具封装
+│   │   └── logger.ts             # 日志记录器模块
+│   ├── index.ts              # 库主入口点
+│   └── unified-latex.d.ts    # unified-latex 相关库的类型声明
+├── test/                     # 测试文件
+│   └── unit/                   # 单元测试
+│       ├── utils/              # 工具函数的单元测试
+│       └── latex-utils/        # LaTeX特定工具的单元测试
+│       └── core/               # 核心逻辑的单元测试 (待补充)
+├── package.json              # 项目配置和依赖
+├── tsconfig.json             # TypeScript 编译器配置
+├── jest.config.js            # Jest 测试框架配置 (如果使用)
+└── README.md                 # 本文档
 ```
 
 ## 实现细节
