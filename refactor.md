@@ -171,4 +171,135 @@ AST-Gen/
     *   为所有公开的API、核心类和复杂函数编写清晰的JSDoc/TSDoc注释。
     *   维护或更新 `README.md` 及本 `refactor.md`，清晰描述项目架构、核心模块职责、数据流、配置选项以及如何进行调试和贡献。
 
+## 6. TODO List 和重构顺序建议
+
+以下是建议的重构步骤和对应的 TODO 列表。建议分阶段进行，每个阶段完成后进行测试。
+
+### 阶段一：基础架构和工具类搭建
+
+*   [ ] **项目结构初始化**: 根据 `refactor.md#1` 创建新的目录结构。
+*   [ ] **核心类型定义 (`src/types/index.ts`)**: 
+    *   [ ] 迁移并整合现有的 `src/types.ts` 和 `src/environment-parser/types.ts`。
+    *   [ ] 定义核心的 `ProjectAST`, `ProjectFileAst`, `MacroInfoRecord`, `EnvInfoRecord`, `NewCommandSpec`, `NewEnvironmentSpec` 等类型。
+    *   [ ] 确保所有类型导出清晰。
+*   [ ] **工具函数迁移与拆分 (`src/utils/`)**:
+    *   [ ] **`fileSystem.ts`**: 从 `src/utils.ts` 迁移 `readFileAsync`, `writeFileAsync`, `fileExistsAsync`, `getFileStats`, `mkdir` (如果需要异步版本则创建 `mkdirAsync`)。
+    *   [ ] **`pathUtils.ts`**: 从 `src/utils.ts` 迁移 `resolvePath`, `normalizePath`, `path.dirname`, `path.basename`, `path.extname` 的封装或直接使用。
+    *   [ ] **`logger.ts`**: 实现一个简单的日志模块 (可基于 `console` 或 `debug` 库)。
+*   [ ] **LaTeX 特定工具函数 (`src/latex-utils/`)**:
+    *   [ ] **`projectFileUtils.ts`**: 从 `src/utils.ts` 迁移 `findTexFiles`, `isTexFile`, `isRootFileContent`。添加 `resolveTexPathWithExtension` (处理 `.tex` 扩展名自动添加的逻辑，当前在 `FileParser.extractIncludedFiles` 和 `ProjectParser.determineRootFile` 中部分存在)。
+*   [ ] **类型声明整理 (`src/unified-latex.d.ts`)**: 
+    *   [ ] 合并 `src/unified-latex-custom.d.ts` 和 `src/unified.d.ts`。
+    *   [ ] 审核并更新类型声明以匹配最新使用的 `unified-latex` 版本和功能。
+*   [ ] **配置管理 (`src/config/`)**:
+    *   [ ] **`options.ts`**: 定义 `ParserOptions` (库API), `CliOptions` (原始CLI参数), `ResolvedParserConfig` (内部统一配置)。
+    *   [ ] **`configManager.ts`**: 实现配置加载、合并、默认值应用和基本验证的逻辑。能够从CLI参数对象和文件路径加载宏/环境定义。 (部分逻辑来自 `src/main.ts` 的参数解析和文件读取部分)
+
+### 阶段二：核心定义处理模块
+
+*   [ ] **`DefinitionHandler.ts` (`src/core/DefinitionHandler.ts`)**: 
+    *   [ ] 基本框架搭建，接收 `ResolvedParserConfig`。
+    *   [ ] 实现加载默认宏 (从 `MacroHandler::loadDefaultMacros`)。
+    *   [ ] 实现加载CTAN标准环境 (从 `MacroHandler::loadCtanEnvironments` 和 `ctanPackageEnvironmentInfo`)。
+    *   [ ] 实现加载用户通过配置提供的宏和环境 (从 `ResolvedParserConfig` 中已解析的 `customMacroRecord`, `customEnvironmentRecord`)。
+    *   [ ] 内部存储机制：按类别 (default/user, ctan, doc-defined, inferred) 分开存储宏和环境。
+    *   [ ] 实现合并逻辑，根据优先级提供最终生效的 `MacroInfoRecord` 和 `EnvInfoRecord` (`getMacrosForAttachment`, `getEnvironmentsForProcessing` 的演变)。
+    *   [ ] 实现添加文档内定义和推断定义的接口。
+    *   [ ] 实现获取所有分类定义的接口 (用于最终序列化)。
+*   [ ] **`unifiedLatexBridge.ts` (`src/latex-utils/unifiedLatexBridge.ts`)**: 
+    *   [ ] 封装 `getParser()` (来自 `@unified-latex/unified-latex-util-parse`)。
+    *   [ ] 封装 `attachMacroArgs()` (来自 `@unified-latex/unified-latex-util-arguments`)。
+    *   [ ] 封装 `processEnvironments()` (来自 `@unified-latex/unified-latex-util-environments`)。
+    *   [ ] 封装 `printRaw()` (来自 `@unified-latex/unified-latex-util-print-raw`)。
+*   [ ] **AST查询工具 (`src/latex-utils/astQuery.ts`)**:
+    *   [ ] 封装 `visit()` (来自 `@unified-latex/unified-latex-util-visit`)。
+    *   [ ] 封装 `match` 对象及其方法 (来自 `@unified-latex/unified-latex-util-match`)。
+
+### 阶段三：定义提取与AST处理
+
+*   [ ] **底层命令定义提取工具 (`src/latex-utils/commandDefinitionUtils.ts`)**: 
+    *   [ ] 迁移 `listNewcommands` 的逻辑/封装 (当前在 `MacroHandler` 中直接使用，并在 `unified-latex-custom.d.ts` 中声明)。
+    *   [ ] 迁移 `listNewEnvironments` 函数 (从 `src/environment-parser/list-newenvironments.ts`)。
+    *   [ ] 迁移 `environmentDefiningMacroToSpec` 及其相关的辅助函数 (如 `environmentDefiningMacroToName`, `environmentDefiningMacroToSignatureAndParams` 从 `src/environment-parser/environment-commands.ts`)。
+    *   [ ] 确保这些函数返回标准化的定义规范对象 (如 `NewCommandSpec`, `NewEnvironmentSpec`)。
+*   [ ] **`DefinitionExtractor.ts` (`src/core/DefinitionExtractor.ts`)**: 
+    *   [ ] 实现提取文档内定义的宏：调用 `commandDefinitionUtils.ts::listNewcommands` 并将其结果转换为 `Ast.MacroInfoRecord`。
+    *   [ ] 实现提取文档内定义的环境：调用 `commandDefinitionUtils.ts::listNewEnvironments`，并将 `NewEnvironmentSpec` 转换为 `Ast.EnvInfoRecord` (或让 `DefinitionHandler` 处理 `NewEnvironmentSpec`)。
+    *   [ ] 实现推断未知宏参数签名的逻辑 (迁移自 `MacroHandler::extractUsedCustomMacros`)，依赖 `astQuery.ts`。
+    *   [ ] 实现提取文件包含指令 (`\input`, `\include`, `\subfile`) 的目标路径 (迁移自 `FileParser::extractIncludedFiles`)，依赖 `astQuery.ts`。
+
+### 阶段四：核心解析流程实现
+
+*   [ ] **`FileContentParser.ts` (`src/core/FileContentParser.ts`)**: 
+    *   [ ] 构造函数接收 `ResolvedParserConfig` 和对 `DefinitionHandler` 的引用。
+    *   [ ] 实现 `parseFileContent(filePath: string, fileContent: string): Promise<InternalFileParseResult>` 方法。
+    *   [ ] **实现多阶段解析逻辑** (参考 `refactor.md#2` 和原 `FileParser.ts` 的逻辑顺序):
+        *   [ ] 1. 原始AST获取 (调用 `unifiedLatexBridge.getParser`)。
+        *   [ ] 2. 提取文档内宏 (调用 `DefinitionExtractor`) -> 更新 `DefinitionHandler`。
+        *   [ ] 3. 初次宏参数附加 (从 `DefinitionHandler` 获取宏，调用 `unifiedLatexBridge.attachMacroArgs`)。
+        *   [ ] 4. 提取文档内环境 (调用 `DefinitionExtractor`) -> 更新 `DefinitionHandler`。
+        *   [ ] 5. 二次宏参数附加 (确保环境定义宏的参数被处理)。
+        *   [ ] 6. 环境处理 (从 `DefinitionHandler` 获取环境，调用 `unifiedLatexBridge.processEnvironments`)。
+        *   [ ] 7. 提取推断宏 (调用 `DefinitionExtractor`) -> 更新 `DefinitionHandler`。
+        *   [ ] 8. 最终宏参数附加。
+        *   [ ] 9. 提取文件依赖 (调用 `DefinitionExtractor`)。
+    *   [ ] 返回包含AST、错误（如果有）和提取到的文件依赖的 `InternalFileParseResult` 对象 (调整现有 `InternalFileParseResult` 类型)。
+*   [ ] **`ProjectProcessor.ts` (`src/core/ProjectProcessor.ts`)**: 
+    *   [ ] 构造函数接收 `ResolvedParserConfig`。
+    *   [ ] 初始化 `DefinitionHandler`。
+    *   [ ] 实现 `parse(entryPath: string): Promise<ProjectAST>` 方法。
+    *   [ ] 实现根文件确定逻辑 (迁移自 `ProjectParser::determineRootFile`，使用 `latex-utils/projectFileUtils.ts`)。
+    *   [ ] 实现文件处理队列和已处理文件集合的管理。
+    *   [ ] 循环处理文件：读取文件 (用 `utils/fileSystem.ts`)，实例化并调用 `FileContentParser`，处理其返回结果，将新依赖加入队列。
+    *   [ ] 错误收集和管理机制。
+    *   [ ] 聚合所有文件的AST和错误，并从 `DefinitionHandler` 获取最终的宏/环境信息，构建 `ProjectAST` 对象。
+
+### 阶段五：序列化、CLI 和库入口
+
+*   [ ] **`AstSerializer.ts` (`src/ast/AstSerializer.ts`)**: 
+    *   [ ] 迁移现有 `src/astSerializer.ts` 的 `serializeProjectAstToJson` 和 `saveAstAsJson`。
+    *   [ ] 调整以适配新的 `ProjectAST` 结构（特别是 `_detailedMacros` 和 `_detailedEnvironments` 的来源）。
+    *   [ ] 确保版本信息等元数据正确获取 (可能需要从 `package.json` 或配置中读取)。
+*   [ ] **CLI 更新 (`src/cli/main.ts`)**: 
+    *   [ ] 迁移现有 `src/main.ts` 的 `mainCli` 和 `parseCliArgs` (后者可部分移至 `configManager` 或 `cli-utils.ts`)。
+    *   [ ] 使用 `configManager` 来解析和验证CLI参数。
+    *   [ ] 实例化并调用 `ProjectProcessor`。
+    *   [ ] 使用 `AstSerializer` 来处理输出。
+    *   [ ] 更新宏和环境摘要的打印逻辑以匹配 `DefinitionHandler` 提供的新结构。
+*   [ ] **库入口更新 (`src/index.ts`)**: 
+    *   [ ] 迁移现有 `src/index.ts`。
+    *   [ ] 导出 `parseLatexProject` (它将内部创建 `ProjectProcessor` 和 `ConfigManager`)。
+    *   [ ] 导出 `serializeProjectAstToJson`, `saveAstAsJson`。
+    *   [ ] 导出核心类型 (`ProjectAST`, `ParserOptions` 等从 `src/types/index.ts`)。
+    *   [ ] 考虑是否导出核心类如 `ProjectProcessor`, `DefinitionHandler` 供高级用户使用。
+
+### 阶段六：测试、文档和收尾
+
+*   [ ] **单元测试**: 
+    *   [ ] 为 `configManager` 编写测试。
+    *   [ ] 为 `DefinitionHandler` (各种加载、合并、提供场景) 编写测试。
+    *   [ ] 为 `DefinitionExtractor` (宏定义、环境定义、推断宏、文件包含提取) 编写测试。
+    *   [ ] 为 `FileContentParser` (模拟不同文件内容和 `DefinitionHandler` 状态) 编写测试。
+    *   [ ] 为 `ProjectProcessor` (根文件查找、多文件处理) 编写测试。
+    *   [ ] 为各 `utils` 和 `latex-utils` 模块编写测试。
+*   [ ] **集成测试**: 
+    *   [ ] 创建/更新 `samples/` 中的示例项目，覆盖不同特性。
+    *   [ ] 编写端到端测试，验证CLI输出和 `parseLatexProject` 返回的 `ProjectAST` 结构的正确性。
+*   [ ] **文档更新**: 
+    *   [ ] 更新 `README.md` 以反映新的架构、API和CLI用法。
+    *   [ ] 为代码中的主要模块、类和公共函数添加/更新JSDoc/TSDoc注释。
+    *   [ ] (本 `refactor.md` 文件在重构完成后可以存档或移除)。
+*   [ ] **代码审查和格式化**: 
+    *   [ ] 确保代码风格一致 (使用 Prettier/ESLint)。
+    *   [ ] 进行代码审查。
+
+### 重构顺序总结
+
+1.  **基础优先**: 先搭建好项目结构、类型、通用工具和配置管理 (阶段一)。这是后续所有模块的基础。
+2.  **核心定义处理**: 接着实现 `DefinitionHandler` 和与底层LaTeX库交互的 `unifiedLatexBridge` (阶段二)。它们是解析逻辑的核心依赖。
+3.  **提取逻辑**: 然后是 `DefinitionExtractor` 和相关的底层提取工具 (阶段三)。这些模块负责从AST中获取信息。
+4.  **解析流程**: 之后是 `FileContentParser` 和 `ProjectProcessor` (阶段四)，它们编排整个解析过程。
+5.  **外围接口**: 最后更新序列化、CLI和库入口 (阶段五)。
+6.  **质量保证**: 测试和文档贯穿始终，但在阶段六集中进行全面的检查和完善。
+
 通过实施这些重构建议，可以期望项目在可维护性、代码清晰度和未来功能扩展方面得到显著提升。 
