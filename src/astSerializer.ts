@@ -24,6 +24,14 @@ interface SerializedOutput {
         inferredUsed: Ast.MacroInfoRecord;
         finalEffectiveMacros: Ast.MacroInfoRecord; // 重复 effectiveMacros，但作为分类的一部分
     };
+    // 新增：环境信息相关字段
+    effectiveEnvironments?: Ast.EnvInfoRecord;
+    environmentsByCategory?: {
+        ctanEnvironments: Ast.EnvInfoRecord;
+        userProvidedEnvironments: Ast.EnvInfoRecord;
+        definedInDocumentEnvironments: Ast.EnvInfoRecord;
+        finalEffectiveEnvironments: Ast.EnvInfoRecord;
+    };
     // customMacros 列表可以基于 finalEffectiveMacros 生成，或移除，因为分类信息更全
     // customMacros?: string[]; 
     processInfo?: {
@@ -40,7 +48,7 @@ interface SerializedOutput {
 /**
  * 将项目AST序列化为JSON字符串
  * 
- * @param projectAST 项目AST对象，期望包含 _detailedMacros
+ * @param projectAST 项目AST对象，期望包含 _detailedMacros 和 _detailedEnvironments
  * @param prettyPrint 是否格式化输出的JSON字符串
  * @returns 表示项目AST的JSON字符串
  */
@@ -55,7 +63,7 @@ export function serializeProjectAstToJson(
         processInfo: {
             timestamp: new Date().toISOString(),
             // TODO: 从 package.json 动态获取版本
-            version: '1.0.1' // 示例版本
+            version: '1.0.2' // 更新版本或从package.json动态获取
         }
     };
   }
@@ -76,6 +84,14 @@ export function serializeProjectAstToJson(
   } else if (projectAST.macros) {
     // 向后兼容，如果 _detailedMacros 不存在，则使用 projectAST.macros
     outputData._metadata.effectiveMacros = projectAST.macros;
+  }
+  
+  // 新增：处理环境信息
+  if (projectAST._detailedEnvironments) {
+    outputData._metadata.environmentsByCategory = projectAST._detailedEnvironments;
+    outputData._metadata.effectiveEnvironments = projectAST._detailedEnvironments.finalEffectiveEnvironments;
+  } else if (projectAST.environments) { // 如果顶层有 environments 字段
+    outputData._metadata.effectiveEnvironments = projectAST.environments;
   }
   
   // (可选) 重新生成 customMacros 列表，如果需要的话

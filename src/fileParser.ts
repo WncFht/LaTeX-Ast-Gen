@@ -11,6 +11,7 @@ import type * as Ast from '@unified-latex/unified-latex-types';
 import { InternalFileParseResult } from './types';
 import { MacroHandler } from './macroHandler';
 import { visit } from '@unified-latex/unified-latex-util-visit';
+import { processEnvironments } from '@unified-latex/unified-latex-util-environments';
 
 /**
  * 文件解析器类
@@ -50,85 +51,80 @@ export class FileParser {
     try {
       const content = await utils.readFileAsync(filePath);
       
-      // 1. 使用当前项目已知的宏进行初步的AST解析和参数附加
-      const initialMacrosForAttachment = this.projectMacroHandlerRef.getMacrosForAttachment();
-      const ast = this.parseLatexContent(content, initialMacrosForAttachment);
-      
+      const rawParser = getParser({ flags: { autodetectExpl3AndAtLetter: true } });
+      let ast: Ast.Root | null;
+      try {
+        ast = rawParser.parse(content);
+      } catch (parseError) {
+        console.error(`[FileParser] Raw parsing failed for ${filePath}:`, parseError);
+        return { ast: null, newMacros: {}, includedFiles: [], error: `Raw parsing failed: ${(parseError as Error).message}` };
+      }
+
       if (ast) {
         const baseDir = path.dirname(filePath);
         
-        // 2. 提取文档中定义的宏 (\\newcommand 等)
-        const definedInThisFile = this.projectMacroHandlerRef.extractDefinedMacros(ast);
-        // 将这些宏添加到项目级宏处理器的 definedInDocMacros 记录中
-        this.projectMacroHandlerRef.addDefinedInDocMacros(definedInThisFile);
+        // 步骤 2: 从原始AST中提取本文档定义的【宏】，并更新到全局处理器
+        const definedInThisFileMacros = this.projectMacroHandlerRef.extractDefinedMacros(ast);
+        this.projectMacroHandlerRef.addDefinedInDocMacros(definedInThisFileMacros);
         
-        // 3. 提取AST中使用的、但仍然未知的宏（推断其签名）
-        // extractUsedCustomMacros 内部会使用 getMacrosForAttachment 来获取最新的已知宏列表
-        // 因此它只会推断那些在默认、用户提供、或已在文档中定义的宏之外的宏
-        const inferredInThisFile = this.projectMacroHandlerRef.extractUsedCustomMacros(ast);
-        // 将这些推断出的宏添加到项目级宏处理器的 inferredUsedMacros 记录中
-        this.projectMacroHandlerRef.addInferredUsedMacros(inferredInThisFile);
-
-        // 4. 使用更新最全的宏定义（包含本文件新发现的），对当前文件的 AST 再次附加参数
-        // 这一步确保了在同一文件中，定义在后的宏也能作用于定义之前的调用（如果适用）
+        // 步骤 3: 第一次参数附加 - 使用当前已知的宏 (包括默认宏和刚刚提取的文档内宏)
+        // 目的是为了让定义环境的命令（如 \newenvironment, \newtcolorbox）的参数能被正确解析
+        let macrosForFirstPass = this.projectMacroHandlerRef.getMacrosForAttachment();
+        console.log("[FileParser-debug] Macros for FIRST pass attachMacroArgs - newtcolorbox:", JSON.stringify(macrosForFirstPass['newtcolorbox']));
+        console.log("[FileParser-debug] Macros for FIRST pass attachMacroArgs - newenvironment:", JSON.stringify(macrosForFirstPass['newenvironment']));
+        this.reattachMacroArgs(ast, macrosForFirstPass); // 原地修改 ast
+        
+        // 步骤 4: 现在环境定义命令的参数已附加，从AST中提取本文档定义的【环境】
+        this.projectMacroHandlerRef.extractAndProcessEnvironmentDefinitions(ast);
+        
+        // 步骤 5: 获取更新后的最全的宏定义 (可能包含因环境定义间接引入的宏)
+        const currentAllMacros = this.projectMacroHandlerRef.getMacrosForAttachment();
+        // 如果在步骤3之后，宏定义有变化，可以考虑再次附加参数，但通常上一步已处理了主要命令的参数。
+        // 为确保一致性，可以再次运行，或者优化为仅当 macrosForFirstPass 和 currentAllMacros 不同时运行。
+        // 为了简单和确保，我们再次运行一次，特别是如果环境定义本身引入了新的宏。
+        console.log("[FileParser-debug] Macros for SECOND pass attachMacroArgs - newtcolorbox:", JSON.stringify(currentAllMacros['newtcolorbox']));
+        this.reattachMacroArgs(ast, currentAllMacros); 
+        
+        // 步骤 6: 获取当前最全的环境定义 (包含本文档刚刚提取的环境)
+        const currentAllEnvs = this.projectMacroHandlerRef.getEnvironmentsForProcessing();
+        if (currentAllEnvs['mainbox']) { 
+          console.log("[FileParser-debug] EnvInfo for 'mainbox' before processEnvironments:", JSON.stringify(currentAllEnvs['mainbox']));
+        } else {
+          console.warn("[FileParser-debug] 'mainbox' not found in currentAllEnvs before processEnvironments.");
+        }
+        if (currentAllEnvs['promptbox']) { 
+            console.log("[FileParser-debug] EnvInfo for 'promptbox' before processEnvironments:", JSON.stringify(currentAllEnvs['promptbox']));
+        } else {
+            console.warn("[FileParser-debug] 'promptbox' not found in currentAllEnvs before processEnvironments.");
+        }
+        try {
+          processEnvironments(ast, currentAllEnvs); // 原地修改 ast，为环境附加参数
+        } catch (envProcessingError) {
+          console.warn(`[FileParser] Error processing environments in ${filePath}: ${(envProcessingError as Error).message}`);
+        }
+        
+        // 步骤 7: 提取AST中使用的、但仍然未知的宏（推断其签名）
+        const inferredInThisFileMacros = this.projectMacroHandlerRef.extractUsedCustomMacros(ast);
+        this.projectMacroHandlerRef.addInferredUsedMacros(inferredInThisFileMacros);
+        
+        // 步骤 8: 最终参数附加，确保推断出的宏的参数也被处理
         const finalMacrosForAttachment = this.projectMacroHandlerRef.getMacrosForAttachment();
+        console.log("[FileParser-debug] Macros for FINAL (third) pass attachMacroArgs - newtcolorbox:", JSON.stringify(finalMacrosForAttachment['newtcolorbox']));
         this.reattachMacroArgs(ast, finalMacrosForAttachment);
         
-        // 5. 提取此文件包含的其他文件
+        // 步骤 9: 提取此文件包含的其他文件
         const includedFiles = this.extractIncludedFiles(ast, baseDir);
         
         return {
           ast,
-          // 返回从此文件新发现/定义的宏，ProjectParser 可以选择是否使用此信息，
-          // 主要的宏状态更新已经通过引用作用于 projectMacroHandlerRef
-          newMacros: { ...definedInThisFile, ...inferredInThisFile }, 
+          newMacros: { ...definedInThisFileMacros, ...inferredInThisFileMacros }, 
           includedFiles
         };
       } else {
-        // 解析失败，返回null AST
-        return {
-          ast: null,
-          newMacros: {},
-          includedFiles: [],
-          error: `文件 ${filePath} 解析失败`
-        };
+        return { ast: null, newMacros: {}, includedFiles: [], error: `文件 ${filePath} 解析后AST为空` };
       }
     } catch (error) {
-      // 处理文件读取或解析错误
-      return {
-        ast: null,
-        newMacros: {},
-        includedFiles: [],
-        error: `处理文件 ${filePath} 时出错: ${(error as Error).message}`
-      };
-    }
-  }
-
-  /**
-   * 解析LaTeX文本内容为AST，并进行初步的宏参数附加。
-   * 
-   * @param content LaTeX文本内容
-   * @param macrosForAttachment 用于此次参数附加的宏定义记录
-   * @returns 解析得到的AST，如果解析失败则为null
-   * @private
-   */
-  private parseLatexContent(content: string, macrosForAttachment: Ast.MacroInfoRecord): Ast.Root | null {
-    try {
-      // 创建解析器实例，启用 expl3 和 @-letter 宏的自动检测
-      const parser = getParser({ 
-        flags: { autodetectExpl3AndAtLetter: true } 
-      });
-      
-      // 解析内容为AST
-      const ast = parser.parse(content);
-      
-      // 进行参数附加
-      this.reattachMacroArgs(ast, macrosForAttachment);
-      
-      return ast;
-    } catch (error) {
-      console.error(`解析LaTeX内容 '${content.substring(0,100)}...' 时出错:`, error);
-      return null;
+      return { ast: null, newMacros: {}, includedFiles: [], error: `处理文件 ${filePath} 时出错: ${(error as Error).message}` };
     }
   }
 
@@ -141,12 +137,23 @@ export class FileParser {
    * @private
    */
   private reattachMacroArgs(ast: Ast.Root, macroRecord: Ast.MacroInfoRecord): void {
+    console.log(`[FileParser-debug] reattachMacroArgs: Attempting to attach args. Macro record for newtcolorbox:`, JSON.stringify(macroRecord['newtcolorbox']));
+    visit(ast, (node) => {
+        if (node.type === 'macro' && node.content === 'newtcolorbox') {
+            console.log(`[FileParser-debug] newtcolorbox node BEFORE attachMacroArgs for this specific call (args might be undefined if first pass on raw AST):`, JSON.stringify(node));
+        }
+    });
+
     try {
-      // 附加宏参数
       attachMacroArgs(ast, macroRecord);
+      console.log(`[FileParser-debug] reattachMacroArgs: attachMacroArgs call completed.`);
+      visit(ast, (node) => {
+          if (node.type === 'macro' && node.content === 'newtcolorbox') {
+              console.log(`[FileParser-debug] newtcolorbox node AFTER attachMacroArgs for this specific call:`, JSON.stringify(node));
+          }
+      });
     } catch (error) {
-      // 参数附加失败通常不应中断整个文件解析，因此只记录警告
-      console.warn(`附加宏参数时出错: ${(error as Error).message}`);
+      console.warn(`[FileParser] 附加宏参数时出错: ${(error as Error).message}`, error);
     }
   }
 
@@ -164,46 +171,36 @@ export class FileParser {
     baseDir: string
   ): { path: string; command: string; rawPath: string }[] {
     const includedFiles: { path: string; command: string; rawPath: string }[] = [];
-    const includeCommands = ['input', 'include', 'subfile']; // 支持的包含文件命令
+    const includeCommands = ['input', 'include', 'subfile'];
     
-    visit(ast, (node) => { // 移除 Ast.Node 类型注解，让 visit 推断
+    visit(ast, (node) => {
       if (node.type !== 'macro') return;
-      
       const macroNode = node as Ast.Macro;
       if (includeCommands.includes(macroNode.content)) {
-        if (!macroNode.args || macroNode.args.length < 1) return;
-        
+        if (!macroNode.args || macroNode.args.length < 1) {
+            // 如果宏没有参数（可能因为之前的 attachMacroArgs 失败或宏本身就没有），则尝试从原始AST中"贪婪"地读取路径。
+            // 这是一个简化的回退，更稳健的方法是确保 attachMacroArgs 总是填充参数。
+            // console.warn("[FileParser-debug] Included file macro '" + macroNode.content + "' has no arguments. Path extraction might be unreliable.");
+            // 简单的尝试：假设路径是紧跟在宏后面的第一个 group 或 string。这里不实现复杂逻辑，依赖于 attachMacroArgs。
+            return; 
+        }
         const firstArg = macroNode.args[0];
         if (!firstArg || firstArg.type !== 'argument') return;
-        
         let rawPath = '';
-        
-        // 提取路径字符串
         if (Array.isArray(firstArg.content)) {
-          // 如果内容是数组，将其转换为字符串
           rawPath = firstArg.content
-            .map((n) => { // 移除 Ast.Node 类型注解，让 map 推断
+            .map((n) => { 
               if (n.type === 'string') return (n as Ast.String).content;
-              // 可以根据需要处理其他节点类型，如宏节点
               return ''; 
             })
             .join('');
-        } else if (typeof (firstArg.content as any) === 'string') { // Should not happen based on types, but as a fallback
-          rawPath = firstArg.content as unknown as string;
         }
-        
         if (!rawPath) return;
-        
-        // 解析相对路径
         let resolvedPath = utils.resolvePath(baseDir, rawPath);
         if (!path.extname(resolvedPath) && !resolvedPath.endsWith('.')) {
           resolvedPath += '.tex';
         }
-        
-        // 规范化路径
         const normalizedPath = utils.normalizePath(resolvedPath);
-        
-        // 添加到包含文件列表
         includedFiles.push({
           path: normalizedPath,
           command: macroNode.content,
@@ -211,7 +208,6 @@ export class FileParser {
         });
       }
     });
-    
     return includedFiles;
   }
 } 

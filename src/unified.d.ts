@@ -132,4 +132,10 @@ declare module '@unified-latex/unified-latex-types' {
       renderInfo?: any;
     };
   }
+  
+  export interface EnvInfo {
+    signature?: string;
+    renderInfo?: any;
+    processContent?: (ast: Ast[]) => Ast[];
+  }
 } 

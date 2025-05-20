@@ -1,17 +1,19 @@
 /**
  * 宏处理器模块
- * 负责在整个项目解析生命周期中管理LaTeX宏定义
+ * 负责在整个项目解析生命周期中管理LaTeX宏定义和环境定义
  */
 
 import * as utils from './utils';
 import type * as Ast from '@unified-latex/unified-latex-types';
 import { ParserOptions } from './types';
 import { listNewcommands } from "@unified-latex/unified-latex-util-macros";
-import { visit, VisitorInfo } from "@unified-latex/unified-latex-util-visit"; 
+import { visit, VisitorInfo } from "@unified-latex/unified-latex-util-visit";
+import { listNewEnvironments } from './environment-parser/list-newenvironments';
+import { environmentInfo as ctanPackageEnvironmentInfo } from "@unified-latex/unified-latex-ctan";
 
 /**
  * 宏处理器类
- * 管理项目中的LaTeX宏定义。
+ * 管理项目中的LaTeX宏定义和环境定义。
  * 它能够加载默认宏、用户通过选项或文件提供的自定义宏、
  * 提取文档中通过 \\newcommand 等定义的宏，以及推断在文档中使用但未定义的宏的参数签名。
  */
@@ -32,6 +34,11 @@ export class MacroHandler {
    */
   private inferredUsedMacros: Ast.MacroInfoRecord;
 
+  // 新增: 存储环境定义相关信息
+  private ctanEnvs: Ast.EnvInfoRecord; // 存储来自CTAN的标准环境
+  private userProvidedEnvs: Ast.EnvInfoRecord; // 存储用户通过选项提供的环境
+  private definedInDocEnvs: Ast.EnvInfoRecord;   // 存储文档中定义的环境
+
   /**
    * 创建一个新的MacroHandler实例。
    * @param options 解析器选项，用于配置宏的加载行为。
@@ -41,17 +48,18 @@ export class MacroHandler {
     this.definedInDocMacros = {};
     this.inferredUsedMacros = {};
 
-    if (!options) {
+    // 初始化环境相关记录
+    this.ctanEnvs = this.loadCtanEnvironments();
+    this.userProvidedEnvs = { ...(options?.customEnvironmentRecord || {}) } as Ast.EnvInfoRecord; // 类型断言
+    this.definedInDocEnvs = {};
+
+    if (!options || options.loadDefaultMacros !== false) {
       this.defaultAndUserMacros = this.loadDefaultMacros();
-      return;
     }
-    if (options.loadDefaultMacros !== false) {
-      this.defaultAndUserMacros = this.loadDefaultMacros();
-    }
-    if (options.customMacroRecord) {
+    if (options?.customMacroRecord) {
       this.addMacrosToRecord(this.defaultAndUserMacros, options.customMacroRecord);
     }
-    if (options.macrosFile) {
+    if (options?.macrosFile) {
       this.loadExternalMacrosFromFile(options.macrosFile)
         .then(macros => {
           if (macros) {
@@ -59,9 +67,31 @@ export class MacroHandler {
           }
         })
         .catch(error => {
-          console.error(`加载宏定义文件失败: ${error.message}`);
+          console.error(`[MacroHandler] 加载宏定义文件失败: ${error.message}`);
         });
     }
+    if (options?.environmentsFile) {
+      this.loadExternalEnvironmentsFromFile(options.environmentsFile)
+        .then(envsFromFile => {
+          if (envsFromFile) {
+            this.addEnvironmentsToRecord(this.userProvidedEnvs, envsFromFile);
+          }
+        })
+        .catch(error => {
+          console.error(`[MacroHandler] 加载环境定义文件失败: ${error.message}`);
+        });
+    }
+  }
+
+  private loadCtanEnvironments(): Ast.EnvInfoRecord {
+    let flatCtanEnvs: Ast.EnvInfoRecord = {};
+    for (const packageName in ctanPackageEnvironmentInfo) {
+      if (Object.prototype.hasOwnProperty.call(ctanPackageEnvironmentInfo, packageName)) {
+        const packageEnvs = (ctanPackageEnvironmentInfo as any)[packageName] as Ast.EnvInfoRecord;
+        flatCtanEnvs = { ...flatCtanEnvs, ...packageEnvs };
+      }
+    }
+    return flatCtanEnvs;
   }
 
   /**
@@ -70,9 +100,7 @@ export class MacroHandler {
    * @param newMacros 要添加的新宏定义，同名宏将被覆盖。
    */
   private addMacrosToRecord(targetRecord: Ast.MacroInfoRecord, newMacros: Ast.MacroInfoRecord): void {
-    for (const [macroName, macroInfo] of Object.entries(newMacros)) {
-      targetRecord[macroName] = macroInfo;
-    }
+    Object.assign(targetRecord, newMacros);
   }
   
   /**
@@ -91,7 +119,7 @@ export class MacroHandler {
    */
   public addInferredUsedMacros(newlyInferredMacros: Ast.MacroInfoRecord): void {
     for (const [macroName, macroInfo] of Object.entries(newlyInferredMacros)) {
-      if (!this.defaultAndUserMacros[macroName] && !this.definedInDocMacros[macroName]) {
+      if (!this.defaultAndUserMacros[macroName] && !this.definedInDocMacros[macroName] && !this.inferredUsedMacros[macroName]) {
         this.inferredUsedMacros[macroName] = macroInfo;
       }
     }
@@ -115,21 +143,46 @@ export class MacroHandler {
   }
 
   /**
-   * 获取所有宏的分类视图，主要用于调试、生成元数据或更细致的宏信息展示。
-   * 返回的对象包含各类宏记录的深拷贝以及最终生效的宏记录。
-   * @returns 包含各类宏记录和最终生效宏记录的对象。
+   * 获取用于环境处理的最终生效的环境信息记录。
    */
-  public getAllMacrosCategorized(): {
-    defaultAndUser: Ast.MacroInfoRecord;
-    definedInDocument: Ast.MacroInfoRecord;
-    inferredUsed: Ast.MacroInfoRecord;
-    finalEffectiveMacros: Ast.MacroInfoRecord;
-  } {
+  public getEnvironmentsForProcessing(): Ast.EnvInfoRecord {
+    console.log("[MacroHandler-debug] getEnvironmentsForProcessing: this.ctanEnvs contains 'mainbox':", !!this.ctanEnvs['mainbox']);
+    console.log("[MacroHandler-debug] getEnvironmentsForProcessing: this.userProvidedEnvs contains 'mainbox':", !!this.userProvidedEnvs['mainbox']);
+    console.log("[MacroHandler-debug] getEnvironmentsForProcessing: this.definedInDocEnvs contains 'mainbox':", !!this.definedInDocEnvs['mainbox']);
+    if(this.definedInDocEnvs['mainbox']) {
+      console.log("[MacroHandler-debug] getEnvironmentsForProcessing: this.definedInDocEnvs['mainbox'] details:", JSON.stringify(this.definedInDocEnvs['mainbox']));
+    }
     return {
-      defaultAndUser: JSON.parse(JSON.stringify(this.defaultAndUserMacros)),
-      definedInDocument: JSON.parse(JSON.stringify(this.definedInDocMacros)),
-      inferredUsed: JSON.parse(JSON.stringify(this.inferredUsedMacros)),
-      finalEffectiveMacros: JSON.parse(JSON.stringify(this.getMacrosForAttachment())),
+      ...this.ctanEnvs,
+      ...this.userProvidedEnvs,
+      ...this.definedInDocEnvs,
+    };
+  }
+
+  /**
+   * 获取所有宏和环境的分类视图。
+   */
+  public getAllDefinitionsCategorized(): {
+    defaultAndUserMacros: Ast.MacroInfoRecord;
+    definedInDocumentMacros: Ast.MacroInfoRecord;
+    inferredUsedMacros: Ast.MacroInfoRecord;
+    finalEffectiveMacros: Ast.MacroInfoRecord;
+    ctanEnvironments: Ast.EnvInfoRecord;
+    userProvidedEnvironments: Ast.EnvInfoRecord;
+    definedInDocumentEnvironments: Ast.EnvInfoRecord;
+    finalEffectiveEnvironments: Ast.EnvInfoRecord;
+  } {
+    const finalEffectiveMacros = this.getMacrosForAttachment();
+    const finalEffectiveEnvs = this.getEnvironmentsForProcessing();
+    return {
+      defaultAndUserMacros: { ...this.defaultAndUserMacros },
+      definedInDocumentMacros: { ...this.definedInDocMacros },
+      inferredUsedMacros: { ...this.inferredUsedMacros },
+      finalEffectiveMacros: { ...finalEffectiveMacros },
+      ctanEnvironments: { ...this.ctanEnvs },
+      userProvidedEnvironments: { ...this.userProvidedEnvs },
+      definedInDocumentEnvironments: { ...this.definedInDocEnvs },
+      finalEffectiveEnvironments: { ...finalEffectiveEnvs },
     };
   }
 
@@ -146,7 +199,9 @@ export class MacroHandler {
     const commandSpecs = listNewcommands(ast);
     for (const spec of commandSpecs) {
       const macroName = spec.name.startsWith('\\') ? spec.name.substring(1) : spec.name;
-      newMacros[macroName] = { signature: spec.signature };
+      if (macroName) {
+        newMacros[macroName] = { signature: spec.signature };
+      }
     }
     return newMacros;
   }
@@ -237,7 +292,7 @@ export class MacroHandler {
       const macroNode = visitedNode as Ast.Macro;
       const macroName = macroNode.content;
       
-      if (currentlyKnownMacroNames.has(macroName)) return;
+      if (!macroName || currentlyKnownMacroNames.has(macroName)) return;
       
       let argCount = 0;
       const parentNode = info.parents[0]; 
@@ -313,12 +368,20 @@ export class MacroHandler {
       'item': { signature: 'o' },
       'label': { signature: 'm' },
       'ref': { signature: 'm' },
-      // 'eqref': { signature: 'm' }, // 特意注释掉以测试推断
+      'eqref': { signature: 'm' },
       'cite': { signature: 'o m' },
       'bibliography': { signature: 'm' },
       'bibliographystyle': { signature: 'm' },
       'includegraphics': { signature: 'o o m' },
       'caption': { signature: 'o m' },
+      'newcounter': { signature: 'm o' },
+      'newtcolorbox': { signature: 'o m o o m' },
+      'newenvironment': { signature: 'm o o m m' },
+      'renewenvironment': { signature: 'm o o m m' },
+      'provideenvironment': { signature: 'm o o m m' },
+      'newtheorem': { signature: 'm o m' },
+      'DeclareTColorBox': { signature: 'm m m' },
+      'newlist': { signature: 'm m m' },
     };
   }
 
@@ -333,7 +396,55 @@ export class MacroHandler {
       const content = await utils.readFileAsync(filePath);
       return JSON.parse(content) as Ast.MacroInfoRecord;
     } catch (error) {
-      throw new Error(`加载宏定义文件 ${filePath} 失败: ${(error as Error).message}`);
+      console.error(`[MacroHandler] Error loading macros from file ${filePath}:`, error);
+      return null;
     }
+  }
+
+  private addEnvironmentsToRecord(targetRecord: Ast.EnvInfoRecord, newEnvs: Ast.EnvInfoRecord): void {
+    Object.assign(targetRecord, newEnvs);
+  }
+
+  private async loadExternalEnvironmentsFromFile(filePath: string): Promise<Ast.EnvInfoRecord | null> {
+    try {
+      const content = await utils.readFileAsync(filePath);
+      return JSON.parse(content) as Ast.EnvInfoRecord;
+    } catch (error) {
+      console.error(`[MacroHandler] Error loading environments from file ${filePath}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 从AST中提取通过 \\newenvironment, \\newtcolorbox 等命令定义的自定义环境，
+   * 并将其参数签名等信息更新到 this.definedInDocEnvs。
+   * @param ast 要扫描的LaTeX AST的根节点。
+   */
+  public extractAndProcessEnvironmentDefinitions(ast: Ast.Root): void {
+    const newEnvSpecs = listNewEnvironments(ast);
+    console.log(`[MacroHandler-debug] extractAndProcessEnvironmentDefinitions - found ${newEnvSpecs.length} new env specs.`);
+    const newEnvsToRegister: Ast.EnvInfoRecord = {};
+    for (const spec of newEnvSpecs) {
+      if (this.definedInDocEnvs[spec.name]) {
+        console.warn(`[MacroHandler] Environment '${spec.name}' is being redefined within the document. Previous definition will be overwritten.`);
+      }
+      if (this.userProvidedEnvs[spec.name]) {
+        console.log(`[MacroHandler] Doc-defined env '${spec.name}' overrides user-provided.`);
+      } else if (this.ctanEnvs[spec.name]) {
+        console.log(`[MacroHandler] Doc-defined env '${spec.name}' overrides CTAN.`);
+      }
+
+      const envInfo = { 
+        signature: spec.signature,
+      };
+      newEnvsToRegister[spec.name] = envInfo;
+    }
+    this.addDefinedInDocEnvironments(newEnvsToRegister);
+  }
+
+  public addDefinedInDocEnvironments(newlyDefinedEnvs: Ast.EnvInfoRecord): void {
+    console.log("[MacroHandler-debug] addDefinedInDocEnvironments called with:", newlyDefinedEnvs);
+    this.addEnvironmentsToRecord(this.definedInDocEnvs, newlyDefinedEnvs);
+    console.log("[MacroHandler-debug] this.definedInDocEnvs after add:", this.definedInDocEnvs);
   }
 }

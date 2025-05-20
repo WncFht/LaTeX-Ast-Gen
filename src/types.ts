@@ -7,12 +7,6 @@ import type { latexParser, bibtexParser } from 'latex-utensils';
 import type * as Ast from '@unified-latex/unified-latex-types';
 
 /**
- * 节点类型
- * 用于自定义访问器模式的类型定义
- */
-export type Node = any;
-
-/**
  * MacroInfo类型
  * 用于定义宏参数规范的接口
  */
@@ -52,6 +46,15 @@ export interface ProjectAST {
     inferredUsed: Ast.MacroInfoRecord;
     finalEffectiveMacros: Ast.MacroInfoRecord;
   };
+  /** 新增：环境信息 */
+  environments?: Ast.EnvInfoRecord;
+  /** 新增：分类后的环境信息 */
+  _detailedEnvironments?: {
+    ctanEnvironments: Ast.EnvInfoRecord;
+    userProvidedEnvironments: Ast.EnvInfoRecord;
+    definedInDocumentEnvironments: Ast.EnvInfoRecord;
+    finalEffectiveEnvironments: Ast.EnvInfoRecord;
+  };
   /** 项目解析期间遇到的全局错误消息 */
   errors?: string[];
 }
@@ -69,6 +72,10 @@ export interface ParserOptions {
   loadDefaultMacros?: boolean;
   /** 直接传入的MacroInfoRecord对象，优先于macrosFile */
   customMacroRecord?: Ast.MacroInfoRecord;
+  /** 用户提供的自定义环境信息记录 */
+  customEnvironmentRecord?: Ast.EnvInfoRecord;
+  /** 包含自定义环境定义的外部JSON文件路径 */
+  environmentsFile?: string;
 }
 
 /**

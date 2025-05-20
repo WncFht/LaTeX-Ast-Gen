@@ -33,7 +33,7 @@ async function mainCli(): Promise<void> {
     }
     
     let customMacroRecord: Ast.MacroInfoRecord | undefined;
-    if (options.customMacros) { // 注意：parseCliArgs中这个选项可能是 customMacros 或 macros
+    if (options.customMacros) {
       try {
         const macrosContent = await utils.readFileAsync(options.customMacros);
         customMacroRecord = JSON.parse(macrosContent) as Ast.MacroInfoRecord;
@@ -45,13 +45,26 @@ async function mainCli(): Promise<void> {
       }
     }
     
+    let customEnvironmentRecord: Ast.EnvInfoRecord | undefined;
+    if (options.customEnvironments) {
+      try {
+        const envsContent = await utils.readFileAsync(options.customEnvironments);
+        customEnvironmentRecord = JSON.parse(envsContent) as Ast.EnvInfoRecord;
+        if (customEnvironmentRecord && typeof customEnvironmentRecord === 'object') {
+          console.log(`已加载自定义环境定义 (来自 ${options.customEnvironments}): ${Object.keys(customEnvironmentRecord).length} 个环境`);
+        }
+      } catch (error) {
+        console.warn(`警告: 无法加载自定义环境文件 ${options.customEnvironments}: ${(error as Error).message}`);
+      }
+    }
+    
     const parserOptions: ParserOptions = { 
       entryPath: options.entryPath, 
-      // macrosFile 选项似乎在你的 yargs 定义中没有直接对应，需要确认
-      // 如果 'custom-macros' 和 'macros' 是同一个意思，确保 yargs 解析正确
-      macrosFile: options.macrosFile || options.customMacros, // 假设 customMacros 也可以是 macrosFile
+      macrosFile: options.macrosFile || options.customMacros,
       loadDefaultMacros: !options.noDefaultMacros,
-      customMacroRecord
+      customMacroRecord,
+      customEnvironmentRecord,
+      environmentsFile: options.environmentsFile || options.customEnvironments
     };
     
     console.log('正在解析LaTeX项目...');
@@ -122,6 +135,30 @@ async function mainCli(): Promise<void> {
       }
     }
     
+    // 新增：打印分类的环境信息
+    if (projectAst._detailedEnvironments) {
+      const { ctanEnvironments, userProvidedEnvironments, definedInDocumentEnvironments, finalEffectiveEnvironments } = projectAst._detailedEnvironments;
+      console.log(`\n--- 环境定义摘要 ---`);
+      const printEnvCategory = (categoryName: string, envs: Ast.EnvInfoRecord) => {
+        const envNames = Object.keys(envs);
+        if (envNames.length > 0) {
+          console.log(`\n[${categoryName}] (${envNames.length} 个):`);
+          envNames.slice(0, 20).forEach(name => {
+            console.log(`- ${name}${envs[name].signature ? ` [${envs[name].signature}]` : ''}`);
+          });
+          if (envNames.length > 20) {
+            console.log(`  ...以及其他 ${envNames.length - 20} 个环境`);
+          }
+        } else {
+          console.log(`\n[${categoryName}]: 无`);
+        }
+      };
+      printEnvCategory("CTAN标准环境 (CTAN Standard Environments)", ctanEnvironments);
+      printEnvCategory("用户提供/外部文件环境 (User-Provided/External)", userProvidedEnvironments);
+      printEnvCategory("文档中定义的环境 (Defined in Document via \\newenvironment etc.)", definedInDocumentEnvironments);
+      console.log(`\n[最终生效的环境列表] (共 ${Object.keys(finalEffectiveEnvironments).length} 个)`);
+    }
+    
     if (projectAst.errors && projectAst.errors.length > 0) {
       console.error('\n解析过程中遇到的错误:');
       projectAst.errors.forEach(error => {
@@ -137,7 +174,7 @@ async function mainCli(): Promise<void> {
 /**
  * 解析命令行参数
  */
-function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
+function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions & { customEnvironments?: string, environmentsFile?: string } {
   const parser = yargs(args)
     .usage('用法: $0 <入口路径> [选项]')
     .option('o', {
@@ -149,6 +186,11 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
     .option('c', {
       alias: 'custom-macros',
       describe: '包含自定义宏定义的JSON文件路径',
+      type: 'string',
+    })
+    .option('e', {
+      alias: 'custom-environments',
+      describe: '包含自定义环境定义的JSON文件路径',
       type: 'string',
     })
     .option('pretty', {
@@ -173,29 +215,27 @@ function parseCliArgs(args: string[]): ParserOptions & CliSpecificOptions {
     })
     .help('h')
     .alias('h', 'help')
-    .epilog('示例: latex-ast-parser ./main.tex -o ast.json --custom-macros ./my_macros.json');
+    .epilog('示例: latex-ast-parser ./main.tex -o ast.json --custom-macros ./my_macros.json --custom-environments ./my_envs.json');
 
   const argv = parser.parseSync();
   
   const entryPath = argv._[0] as string | undefined;
   
-  // 基本的 ParserOptions，确保类型正确
   const parserOptions: ParserOptions = {
     entryPath: entryPath || '',
     macrosFile: argv.customMacros as string | undefined,
-    loadDefaultMacros: !argv.noDefaultMacros, // 从 argv.noDefaultMacros 计算
-    customMacroRecord: undefined, // 这个由 mainCli 内部逻辑填充
+    loadDefaultMacros: !argv.noDefaultMacros,
+    customMacroRecord: undefined,
+    customEnvironmentRecord: undefined,
+    environmentsFile: argv.customEnvironments as string | undefined,
   };
 
-  // CliSpecificOptions 和其他 yargs 解析出的参数
-  // argv 中已经包含了如 output, pretty, help, customMacros (路径), noDefaultMacros 等
-  // 直接将 argv 展开，然后覆盖/添加特定计算或处理的字段
   return {
-    ...argv, // 首先展开 argv，它包含了 yargs 解析的所有选项
-    ...parserOptions, // 然后用明确构造的 parserOptions覆盖或补充，特别是类型转换和逻辑计算后的字段
-    // output, pretty, help 等字段会由 ...argv 提供，类型由 yargs 保证
-    // customMacros (作为文件路径) 也由 ...argv 提供
-  } as ParserOptions & CliSpecificOptions;
+    ...argv,
+    ...parserOptions,
+    customEnvironments: argv.customEnvironments as string | undefined,
+    environmentsFile: argv.customEnvironments as string | undefined,
+  } as ParserOptions & CliSpecificOptions & { customEnvironments?: string, environmentsFile?: string };
 }
 
 if (require.main === module) {

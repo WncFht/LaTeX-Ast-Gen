@@ -71,7 +71,9 @@ export class ProjectParser {
       entryPath: entryPath, // 将 entryPath 传递给 MacroHandler 的选项
       macrosFile: options?.macrosFile,
       customMacroRecord: options?.customMacroRecord,
-      loadDefaultMacros: options?.loadDefaultMacros
+      loadDefaultMacros: options?.loadDefaultMacros,
+      customEnvironmentRecord: options?.customEnvironmentRecord, // 确保传递环境相关选项
+      environmentsFile: options?.environmentsFile
     };
     this.macroHandler = new MacroHandler(macroHandlerOptions);
     // FileParser 需要引用最新的 MacroHandler 实例
@@ -81,11 +83,24 @@ export class ProjectParser {
     
     if (!rootFile) {
       this.projectGlobalErrors.push(`无法确定根文件，入口路径: ${entryPath}`);
+      const allDefs = this.macroHandler.getAllDefinitionsCategorized();
       return {
         rootFilePath: null,
         files: [],
-        macros: this.macroHandler.getAllMacrosCategorized().finalEffectiveMacros,
-        _detailedMacros: this.macroHandler.getAllMacrosCategorized(),
+        macros: allDefs.finalEffectiveMacros,
+        _detailedMacros: {
+            defaultAndUser: allDefs.defaultAndUserMacros,
+            definedInDocument: allDefs.definedInDocumentMacros,
+            inferredUsed: allDefs.inferredUsedMacros,
+            finalEffectiveMacros: allDefs.finalEffectiveMacros
+        },
+        environments: allDefs.finalEffectiveEnvironments,
+        _detailedEnvironments: {
+            ctanEnvironments: allDefs.ctanEnvironments,
+            userProvidedEnvironments: allDefs.userProvidedEnvironments,
+            definedInDocumentEnvironments: allDefs.definedInDocumentEnvironments,
+            finalEffectiveEnvironments: allDefs.finalEffectiveEnvironments
+        },
         errors: this.projectGlobalErrors
       };
     }
@@ -148,12 +163,25 @@ export class ProjectParser {
       }
     }
     
-    // 返回ProjectAST
+    // 使用新的方法名 getAllDefinitionsCategorized
+    const getAllDefinitionsCategorized = this.macroHandler.getAllDefinitionsCategorized();
     return {
       rootFilePath: this.rootFilePath,
       files: projectFileAstArray,
-      macros: this.macroHandler.getAllMacrosCategorized().finalEffectiveMacros,
-      _detailedMacros: this.macroHandler.getAllMacrosCategorized(),
+      macros: getAllDefinitionsCategorized.finalEffectiveMacros, // 从新方法的结果中获取宏
+      _detailedMacros: { // 保持 _detailedMacros 结构，但数据源于新方法
+        defaultAndUser: getAllDefinitionsCategorized.defaultAndUserMacros,
+        definedInDocument: getAllDefinitionsCategorized.definedInDocumentMacros,
+        inferredUsed: getAllDefinitionsCategorized.inferredUsedMacros,
+        finalEffectiveMacros: getAllDefinitionsCategorized.finalEffectiveMacros
+      },
+      environments: getAllDefinitionsCategorized.finalEffectiveEnvironments,
+      _detailedEnvironments: {
+          ctanEnvironments: getAllDefinitionsCategorized.ctanEnvironments,
+          userProvidedEnvironments: getAllDefinitionsCategorized.userProvidedEnvironments,
+          definedInDocumentEnvironments: getAllDefinitionsCategorized.definedInDocumentEnvironments,
+          finalEffectiveEnvironments: getAllDefinitionsCategorized.finalEffectiveEnvironments
+      },
       errors: this.projectGlobalErrors.length > 0 ? this.projectGlobalErrors : undefined
     };
   }
@@ -260,8 +288,8 @@ export async function findRootFile(entryPath: string): Promise<string | null> {
  * @returns 项目AST
  */
 export async function parseLatexProject(options: ParserOptions): Promise<ProjectAST> {
-  // ProjectParser 的构造函数现在不依赖于预先配置的 MacroHandler
-  // MacroHandler 会在 ProjectParser.parse 方法内部根据 options 创建
   const projectParser = new ProjectParser();
+  // parseLatexProject 直接返回 projectParser.parse 的结果，
+  // 因此 ProjectParser.parse 内部对 getAllDefinitionsCategorized 的调用和结构调整会自动生效。
   return projectParser.parse(options.entryPath, options);
 } 
